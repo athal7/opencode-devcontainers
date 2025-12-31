@@ -1,0 +1,26 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create release tarball
+        run: |
+          mkdir -p dist
+          tar -czvf dist/devcontainer-multi.tar.gz bin/ install.sh README.md LICENSE
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/devcontainer-multi.tar.gz
+          generate_release_notes: true

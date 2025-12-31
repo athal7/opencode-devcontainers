@@ -14,16 +14,24 @@ This tool solves the problem by:
 
 ## Installation
 
+### Quick install (recommended)
+
 ```bash
-# Clone the repo
+curl -fsSL https://raw.githubusercontent.com/athal7/devcontainer-multi/main/install.sh | bash
+```
+
+This installs to `~/.local/bin`. To install elsewhere:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/athal7/devcontainer-multi/main/install.sh | bash -s -- /usr/local/bin
+```
+
+### From source
+
+```bash
 git clone https://github.com/athal7/devcontainer-multi.git
 cd devcontainer-multi
-
-# Run the install script
 ./install.sh
-
-# Or manually copy scripts to your PATH
-cp bin/* ~/.local/bin/
 ```
 
 ### Dependencies
