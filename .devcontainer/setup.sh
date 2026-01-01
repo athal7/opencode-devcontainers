@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Setup script for devcontainer-multi development
+# Setup script for ocdc development
 #
 
 set -euo pipefail

@@ -3,17 +3,17 @@
 # ocdc-down - Stop a devcontainer and release its port assignment
 #
 # Usage:
-#   dcdown              # Stop container for current directory
-#   dcdown <workspace>  # Stop container for specific workspace path
-#   dcdown --all        # Stop all tracked devcontainers
-#   dcdown --prune      # Remove stale port assignments (no running container)
+#   ocdc down              # Stop container for current directory
+#   ocdc down <workspace>  # Stop container for specific workspace path
+#   ocdc down --all        # Stop all tracked devcontainers
+#   ocdc down --prune      # Remove stale port assignments (no running container)
 #
 # Options:
 #   --remove-clone      Also remove the clone directory (if applicable)
 #
 # Related commands:
-#   dcup     - Start devcontainer
-#   dclist   - List active instances
+#   ocdc up     - Start devcontainer
+#   ocdc list   - List active instances
 
 set -euo pipefail
 

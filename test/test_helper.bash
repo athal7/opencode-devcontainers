@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Test helper functions for devcontainer-multi tests
+# Test helper functions for ocdc tests
 #
 
 # Test counters

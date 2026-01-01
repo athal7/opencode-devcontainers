@@ -3,18 +3,18 @@
 # ocdc-exec - Execute a command in a running devcontainer
 #
 # Usage:
-#   dcexec <command> [args...]   # Run command in current workspace's container
-#   dcexec --workspace <path> <command> [args...]
+#   ocdc exec <command> [args...]   # Run command in current workspace's container
+#   ocdc exec --workspace <path> <command> [args...]
 #
 # Examples:
-#   dcexec bash                  # Open shell in container
-#   dcexec bin/rails console    # Run rails console
-#   dcexec npm test             # Run tests
+#   ocdc exec bash                  # Open shell in container
+#   ocdc exec bin/rails console    # Run rails console
+#   ocdc exec npm test             # Run tests
 #
 # Related commands:
-#   dcup     - Start devcontainer
-#   dcdown   - Stop devcontainer
-#   dclist   - List active instances
+#   ocdc up     - Start devcontainer
+#   ocdc down   - Stop devcontainer
+#   ocdc list   - List active instances
 
 set -euo pipefail
 
@@ -54,7 +54,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ ${#CMD_ARGS[@]} -gt 0 ]] || error "No command specified. Usage: dcexec <command> [args...]"
+[[ ${#CMD_ARGS[@]} -gt 0 ]] || error "No command specified. Usage: ocdc exec <command> [args...]"
 
 # Determine workspace
 if [[ -z "$WORKSPACE" ]]; then
@@ -70,7 +70,7 @@ WORKSPACE=$(cd "$WORKSPACE" 2>/dev/null && pwd -P || echo "$WORKSPACE")
 
 # Check if workspace is tracked
 if ! jq -e --arg ws "$WORKSPACE" '.[$ws]' "$PORTS_FILE" >/dev/null 2>&1; then
-  error "No devcontainer tracked for: $WORKSPACE\nUse 'dcup' to start one."
+  error "No devcontainer tracked for: $WORKSPACE\nUse 'ocdc up' to start one."
 fi
 
 # Get workspace ID for override file
