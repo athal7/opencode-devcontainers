@@ -61,12 +61,12 @@ if [[ -z "$WORKSPACE" ]]; then
   if git rev-parse --git-dir >/dev/null 2>&1; then
     WORKSPACE=$(git rev-parse --show-toplevel)
   else
-    WORKSPACE=$(pwd -P)
+    WORKSPACE=$(pwd)
   fi
 fi
 
-# Resolve to absolute path (use -P to resolve symlinks on macOS)
-WORKSPACE=$(cd "$WORKSPACE" 2>/dev/null && pwd -P || echo "$WORKSPACE")
+# Resolve to absolute path with symlinks resolved
+WORKSPACE=$(ocdc_resolve_path "$WORKSPACE")
 
 # Check if workspace is tracked
 if ! jq -e --arg ws "$WORKSPACE" '.[$ws]' "$PORTS_FILE" >/dev/null 2>&1; then
