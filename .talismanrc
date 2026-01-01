@@ -7,4 +7,6 @@ fileignoreconfig:
   checksum: 3ed6a1d846bc26f9c17bb3bf6ee72eefc2a042071359be561eff97bde00fee5a
 - filename: test/test_poll_config.bash
   checksum: 890ee3f923c6e7da04c29bb7e09dfb913040848e2bf7c8d1b46dc7c070cb9cf7
+- filename: README.md
+  checksum: b0c983a5b11e02202e093461e9d037a69146e3cfa65a977a3fb1e24fb8714a3f
 version: "1.0"
