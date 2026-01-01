@@ -35,8 +35,8 @@ export const HOST_COMMANDS = [
   'code', 'vim', 'nvim', 'nano', 'open', 'cursor',
   // System inspection
   'which', 'type', 'echo', 'env', 'printenv', 'whoami', 'hostname',
-  // ocdc commands (prevent recursion)
-  'ocdc', 'dcup', 'dcdown', 'dclist', 'dcgo', 'dcexec', 'dctui',
+  // ocdc command (prevent recursion)
+  'ocdc',
   // Package managers (global installs on host)
   'brew', 'apt', 'apt-get', 'yum', 'dnf',
 ]
