@@ -327,10 +327,7 @@ process_poll() {
 
 # Main
 main() {
-  # Check dependencies first
-  check_dependencies || exit 1
-  
-  # Parse arguments
+  # Parse arguments (check for --help first, before checking dependencies)
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --once)
@@ -368,6 +365,9 @@ main() {
         ;;
     esac
   done
+  
+  # Check dependencies after parsing arguments
+  check_dependencies || exit 1
   
   if [[ "$DAEMON" == "true" ]]; then
     log "Starting poll daemon (interval: ${INTERVAL}s)"
