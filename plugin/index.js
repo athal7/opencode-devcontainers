@@ -2,7 +2,7 @@ import {
   mkdirSync, existsSync, readdirSync, unlinkSync, copyFileSync 
 } from "fs"
 import { join, dirname } from "path"
-import { execSync } from "child_process"
+import { execSync, execFileSync } from "child_process"
 import { fileURLToPath } from "url"
 import { tool } from "@opencode-ai/plugin/tool"
 
@@ -16,6 +16,8 @@ import {
   getSessionsDir,
   getCacheDir,
   runWithTimeout,
+  buildOcdcExecArgs,
+  buildOcdcExecCommandString,
 } from "./helpers.js"
 
 // Timeout for init operations (2 seconds)
@@ -169,10 +171,12 @@ export const OCDC = async ({ client }) => {
           }
           
           try {
-            const result = execSync(`ocdc exec --workspace "${session.workspace}" -- ${command}`, {
-              encoding: "utf-8",
-              maxBuffer: 10 * 1024 * 1024,
-            })
+            // Use execFileSync with array arguments to avoid shell injection
+            const result = execFileSync(
+              "ocdc",
+              buildOcdcExecArgs(session.workspace, command),
+              { encoding: "utf-8", maxBuffer: 10 * 1024 * 1024 }
+            )
             return result
           } catch (err) {
             return `Command failed: ${err.message}\n${err.stderr || ""}`
@@ -236,7 +240,8 @@ export const OCDC = async ({ client }) => {
             if (shouldCreate) {
               // User confirmed creation - run ocdc up
               try {
-                const result = execSync(`ocdc up ${target}`, {
+                // Use execFileSync to avoid shell injection from target
+                const result = execFileSync('ocdc', ['up', target], {
                   encoding: "utf-8",
                   maxBuffer: 10 * 1024 * 1024,
                   timeout: 300000, // 5 minutes for container setup
@@ -284,7 +289,8 @@ export const OCDC = async ({ client }) => {
             // Container exists but not running - offer to start it
             if (shouldCreate) {
               try {
-                const result = execSync(`ocdc up ${target}`, {
+                // Use execFileSync to avoid shell injection from target
+                const result = execFileSync('ocdc', ['up', target], {
                   encoding: "utf-8",
                   maxBuffer: 10 * 1024 * 1024,
                   timeout: 300000,
@@ -347,8 +353,8 @@ export const OCDC = async ({ client }) => {
       // Check if command should run on host
       if (hostCheck) return
       
-      // Wrap with ocdc exec
-      output.args.command = `ocdc exec --workspace "${session.workspace}" -- ${cmd}`
+      // Wrap with ocdc exec (using safe command builder to prevent shell injection)
+      output.args.command = buildOcdcExecCommandString(session.workspace, cmd)
     }
   }
 }

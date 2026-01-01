@@ -618,8 +618,9 @@ test_plugin_hook_uses_shouldRunOnHost() {
 }
 
 test_plugin_hook_wraps_with_ocdc_exec() {
-  grep -q 'ocdc exec --workspace' "$PLUGIN_DIR/index.js" || {
-    echo "Hook should wrap commands with ocdc exec"
+  # The hook now uses buildOcdcExecCommandString for safe command wrapping
+  grep -q 'buildOcdcExecCommandString' "$PLUGIN_DIR/index.js" || {
+    echo "Hook should wrap commands with buildOcdcExecCommandString"
     return 1
   }
   return 0
@@ -862,6 +863,327 @@ test_plugin_init_timeout_prevents_hang() {
   ")
   
   [[ "$result" == PASS* ]] || { echo "Timeout should prevent hang: $result"; return 1; }
+  return 0
+}
+
+# =============================================================================
+# Secure Command Execution Tests
+# =============================================================================
+# These tests verify that command execution is safe against shell injection
+
+test_build_ocdc_exec_args_simple_command() {
+  if ! command -v node &>/dev/null; then
+    echo "SKIP: node not available"
+    return 0
+  fi
+  
+  local result=$(run_node "
+    import { buildOcdcExecArgs } from '$PLUGIN_DIR/helpers.js';
+    
+    const args = buildOcdcExecArgs('/path/to/workspace', 'echo hello');
+    const expected = ['exec', '--workspace', '/path/to/workspace', '--', 'echo hello'];
+    
+    if (JSON.stringify(args) !== JSON.stringify(expected)) {
+      throw new Error('Expected: ' + JSON.stringify(expected) + ', got: ' + JSON.stringify(args));
+    }
+    console.log('PASS');
+  ")
+  
+  [[ "$result" == "PASS" ]] || { echo "buildOcdcExecArgs simple command failed: $result"; return 1; }
+  return 0
+}
+
+test_build_ocdc_exec_args_workspace_with_spaces() {
+  if ! command -v node &>/dev/null; then
+    echo "SKIP: node not available"
+    return 0
+  fi
+  
+  local result=$(run_node "
+    import { buildOcdcExecArgs } from '$PLUGIN_DIR/helpers.js';
+    
+    const args = buildOcdcExecArgs('/path/with spaces/workspace', 'ls -la');
+    const expected = ['exec', '--workspace', '/path/with spaces/workspace', '--', 'ls -la'];
+    
+    if (JSON.stringify(args) !== JSON.stringify(expected)) {
+      throw new Error('Expected: ' + JSON.stringify(expected) + ', got: ' + JSON.stringify(args));
+    }
+    console.log('PASS');
+  ")
+  
+  [[ "$result" == "PASS" ]] || { echo "buildOcdcExecArgs workspace with spaces failed: $result"; return 1; }
+  return 0
+}
+
+test_build_ocdc_exec_args_command_with_shell_metacharacters() {
+  if ! command -v node &>/dev/null; then
+    echo "SKIP: node not available"
+    return 0
+  fi
+  
+  local result=$(run_node "
+    import { buildOcdcExecArgs } from '$PLUGIN_DIR/helpers.js';
+    
+    // Command with shell metacharacters - should be preserved as-is since it's passed to shell
+    const args = buildOcdcExecArgs('/workspace', 'echo \\\$HOME && ls | grep test');
+    const expected = ['exec', '--workspace', '/workspace', '--', 'echo \\\$HOME && ls | grep test'];
+    
+    if (JSON.stringify(args) !== JSON.stringify(expected)) {
+      throw new Error('Expected: ' + JSON.stringify(expected) + ', got: ' + JSON.stringify(args));
+    }
+    console.log('PASS');
+  ")
+  
+  [[ "$result" == "PASS" ]] || { echo "buildOcdcExecArgs command with metacharacters failed: $result"; return 1; }
+  return 0
+}
+
+test_shell_quote_simple_string() {
+  if ! command -v node &>/dev/null; then
+    echo "SKIP: node not available"
+    return 0
+  fi
+  
+  local result=$(run_node "
+    import { shellQuote } from '$PLUGIN_DIR/helpers.js';
+    
+    const quoted = shellQuote('/simple/path');
+    if (quoted !== '/simple/path') {
+      throw new Error('Expected: /simple/path, got: ' + quoted);
+    }
+    console.log('PASS');
+  ")
+  
+  [[ "$result" == "PASS" ]] || { echo "shellQuote simple string failed: $result"; return 1; }
+  return 0
+}
+
+test_shell_quote_string_with_spaces() {
+  if ! command -v node &>/dev/null; then
+    echo "SKIP: node not available"
+    return 0
+  fi
+  
+  local result=$(run_node "
+    import { shellQuote } from '$PLUGIN_DIR/helpers.js';
+    
+    const quoted = shellQuote('/path/with spaces');
+    if (quoted !== \"'/path/with spaces'\") {
+      throw new Error(\"Expected: '/path/with spaces', got: \" + quoted);
+    }
+    console.log('PASS');
+  ")
+  
+  [[ "$result" == "PASS" ]] || { echo "shellQuote string with spaces failed: $result"; return 1; }
+  return 0
+}
+
+test_shell_quote_string_with_single_quotes() {
+  if ! command -v node &>/dev/null; then
+    echo "SKIP: node not available"
+    return 0
+  fi
+  
+  local result=$(run_node "
+    import { shellQuote } from '$PLUGIN_DIR/helpers.js';
+    
+    // Single quotes in the string need escaping
+    const quoted = shellQuote(\"it's a test\");
+    // Should produce: 'it'\\''s a test' (close quote, escaped quote, open quote)
+    if (quoted !== \"'it'\\\"'\\\"'s a test'\") {
+      throw new Error(\"Expected: 'it'\\\"'\\\"'s a test', got: \" + quoted);
+    }
+    console.log('PASS');
+  ")
+  
+  [[ "$result" == "PASS" ]] || { echo "shellQuote string with single quotes failed: $result"; return 1; }
+  return 0
+}
+
+test_shell_quote_string_with_special_chars() {
+  if ! command -v node &>/dev/null; then
+    echo "SKIP: node not available"
+    return 0
+  fi
+  
+  local result=$(run_node "
+    import { shellQuote } from '$PLUGIN_DIR/helpers.js';
+    
+    // String with shell metacharacters
+    const quoted = shellQuote('/path/\\\$(whoami)/test');
+    // Should be quoted to prevent expansion
+    if (!quoted.startsWith(\"'\") || !quoted.endsWith(\"'\")) {
+      throw new Error('Should be single-quoted, got: ' + quoted);
+    }
+    console.log('PASS');
+  ")
+  
+  [[ "$result" == "PASS" ]] || { echo "shellQuote string with special chars failed: $result"; return 1; }
+  return 0
+}
+
+test_build_ocdc_exec_command_string() {
+  if ! command -v node &>/dev/null; then
+    echo "SKIP: node not available"
+    return 0
+  fi
+  
+  local result=$(run_node "
+    import { buildOcdcExecCommandString } from '$PLUGIN_DIR/helpers.js';
+    
+    const cmd = buildOcdcExecCommandString('/simple/workspace', 'npm test');
+    if (cmd !== 'ocdc exec --workspace /simple/workspace -- npm test') {
+      throw new Error('Expected: ocdc exec --workspace /simple/workspace -- npm test, got: ' + cmd);
+    }
+    console.log('PASS');
+  ")
+  
+  [[ "$result" == "PASS" ]] || { echo "buildOcdcExecCommandString simple failed: $result"; return 1; }
+  return 0
+}
+
+test_build_ocdc_exec_command_string_with_spaces() {
+  if ! command -v node &>/dev/null; then
+    echo "SKIP: node not available"
+    return 0
+  fi
+  
+  local result=$(run_node "
+    import { buildOcdcExecCommandString } from '$PLUGIN_DIR/helpers.js';
+    
+    const cmd = buildOcdcExecCommandString('/path/with spaces', 'npm test');
+    // Workspace path should be properly quoted
+    if (cmd !== \"ocdc exec --workspace '/path/with spaces' -- npm test\") {
+      throw new Error(\"Expected: ocdc exec --workspace '/path/with spaces' -- npm test, got: \" + cmd);
+    }
+    console.log('PASS');
+  ")
+  
+  [[ "$result" == "PASS" ]] || { echo "buildOcdcExecCommandString with spaces failed: $result"; return 1; }
+  return 0
+}
+
+test_shell_quote_empty_string() {
+  if ! command -v node &>/dev/null; then
+    echo "SKIP: node not available"
+    return 0
+  fi
+  
+  local result=$(run_node "
+    import { shellQuote } from '$PLUGIN_DIR/helpers.js';
+    
+    const quoted = shellQuote('');
+    // Empty string should be quoted to prevent shell issues
+    if (quoted !== \"''\") {
+      throw new Error(\"Expected: '', got: \" + quoted);
+    }
+    console.log('PASS');
+  ")
+  
+  [[ "$result" == "PASS" ]] || { echo "shellQuote empty string failed: $result"; return 1; }
+  return 0
+}
+
+test_shell_quote_injection_attempt() {
+  if ! command -v node &>/dev/null; then
+    echo "SKIP: node not available"
+    return 0
+  fi
+  
+  local result=$(run_node "
+    import { shellQuote } from '$PLUGIN_DIR/helpers.js';
+    
+    // Attempt to inject shell commands via workspace path
+    const malicious = \"'; rm -rf /; echo '\";
+    const quoted = shellQuote(malicious);
+    
+    // Result should be a single-quoted string that treats the input as literal
+    // The quotes should prevent any shell interpretation
+    if (!quoted.startsWith(\"'\") || !quoted.endsWith(\"'\")) {
+      throw new Error('Should be single-quoted, got: ' + quoted);
+    }
+    
+    // The semicolons and commands should be treated as literal characters
+    if (!quoted.includes('rm -rf')) {
+      throw new Error('Command should be preserved as literal, got: ' + quoted);
+    }
+    
+    console.log('PASS');
+  ")
+  
+  [[ "$result" == "PASS" ]] || { echo "shellQuote injection attempt failed: $result"; return 1; }
+  return 0
+}
+
+test_shell_quote_newlines() {
+  if ! command -v node &>/dev/null; then
+    echo "SKIP: node not available"
+    return 0
+  fi
+  
+  local result=$(run_node "
+    import { shellQuote } from '$PLUGIN_DIR/helpers.js';
+    
+    // Paths can technically contain newlines
+    const pathWithNewline = '/path/with\\nnewline';
+    const quoted = shellQuote(pathWithNewline);
+    
+    // Should be quoted to contain the newline safely
+    if (!quoted.startsWith(\"'\") || !quoted.endsWith(\"'\")) {
+      throw new Error('Should be single-quoted, got: ' + quoted);
+    }
+    console.log('PASS');
+  ")
+  
+  [[ "$result" == "PASS" ]] || { echo "shellQuote newlines failed: $result"; return 1; }
+  return 0
+}
+
+test_shell_quote_backticks() {
+  if ! command -v node &>/dev/null; then
+    echo "SKIP: node not available"
+    return 0
+  fi
+  
+  local result=$(run_node "
+    import { shellQuote } from '$PLUGIN_DIR/helpers.js';
+    
+    // Backticks can cause command substitution in some shells
+    const withBackticks = '/path/\\\`whoami\\\`/test';
+    const quoted = shellQuote(withBackticks);
+    
+    // Should be quoted - single quotes prevent backtick expansion
+    if (!quoted.startsWith(\"'\") || !quoted.endsWith(\"'\")) {
+      throw new Error('Should be single-quoted, got: ' + quoted);
+    }
+    console.log('PASS');
+  ")
+  
+  [[ "$result" == "PASS" ]] || { echo "shellQuote backticks failed: $result"; return 1; }
+  return 0
+}
+
+test_build_ocdc_exec_command_preserves_shell_features() {
+  if ! command -v node &>/dev/null; then
+    echo "SKIP: node not available"
+    return 0
+  fi
+  
+  local result=$(run_node "
+    import { buildOcdcExecCommandString } from '$PLUGIN_DIR/helpers.js';
+    
+    // Commands with pipes, redirects, etc. should be preserved (not escaped)
+    // because the user expects shell features to work in their commands
+    const cmd = buildOcdcExecCommandString('/workspace', 'ls -la | grep test && echo done');
+    
+    // Command should NOT be quoted - shell features should work
+    if (!cmd.includes('| grep') || !cmd.includes('&& echo')) {
+      throw new Error('Shell features should be preserved in command, got: ' + cmd);
+    }
+    console.log('PASS');
+  ")
+  
+  [[ "$result" == "PASS" ]] || { echo "buildOcdcExecCommand preserves shell features failed: $result"; return 1; }
   return 0
 }
 
@@ -1256,6 +1578,30 @@ echo "Plugin Initialization Tests:"
 for test_func in \
   test_plugin_init_does_not_await_slow_operations \
   test_plugin_init_timeout_prevents_hang
+do
+  setup
+  run_test "${test_func#test_}" "$test_func"
+  teardown
+done
+
+echo ""
+echo "Secure Command Execution Tests:"
+
+for test_func in \
+  test_build_ocdc_exec_args_simple_command \
+  test_build_ocdc_exec_args_workspace_with_spaces \
+  test_build_ocdc_exec_args_command_with_shell_metacharacters \
+  test_shell_quote_simple_string \
+  test_shell_quote_string_with_spaces \
+  test_shell_quote_string_with_single_quotes \
+  test_shell_quote_string_with_special_chars \
+  test_shell_quote_empty_string \
+  test_shell_quote_injection_attempt \
+  test_shell_quote_newlines \
+  test_shell_quote_backticks \
+  test_build_ocdc_exec_command_string \
+  test_build_ocdc_exec_command_string_with_spaces \
+  test_build_ocdc_exec_command_preserves_shell_features
 do
   setup
   run_test "${test_func#test_}" "$test_func"

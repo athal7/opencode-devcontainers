@@ -181,3 +181,51 @@ export function checkContainerRunning(workspace) {
     return false
   }
 }
+
+// ============ Secure Command Execution ============
+
+/**
+ * Shell-quotes a string for safe inclusion in a shell command.
+ * Uses single quotes which prevent all shell interpretation except for
+ * single quotes themselves, which are escaped using the '"'"' pattern.
+ * 
+ * Returns the original string if it contains only safe characters.
+ */
+export function shellQuote(str) {
+  // Safe characters that don't need quoting
+  if (/^[a-zA-Z0-9_\-./=:@]+$/.test(str)) {
+    return str
+  }
+  // Escape single quotes: close quote, add double-quoted single quote, reopen quote
+  // "it's" becomes 'it'"'"'s'
+  return "'" + str.replace(/'/g, "'\"'\"'") + "'"
+}
+
+/**
+ * Builds an array of arguments for execFileSync to run ocdc exec.
+ * This avoids shell interpolation by passing arguments as an array.
+ * 
+ * @param {string} workspace - The workspace path
+ * @param {string} command - The command to execute (passed as single argument after --)
+ * @returns {string[]} Array of arguments for execFileSync
+ */
+export function buildOcdcExecArgs(workspace, command) {
+  return ['exec', '--workspace', workspace, '--', command]
+}
+
+/**
+ * Builds a shell command string for ocdc exec with properly quoted workspace.
+ * Used when the command must be passed as a string (e.g., for OpenCode bash tool).
+ * 
+ * Note: The command is NOT quoted because it's intentionally passed to the shell
+ * for interpretation - users expect shell features like pipes, redirects, and
+ * variable expansion to work. The workspace path IS quoted because it's a single
+ * argument that should not be interpreted by the shell.
+ * 
+ * @param {string} workspace - The workspace path (will be shell-quoted)
+ * @param {string} command - The command to execute (passed verbatim to shell)
+ * @returns {string} Shell command string with safely quoted workspace
+ */
+export function buildOcdcExecCommandString(workspace, command) {
+  return `ocdc exec --workspace ${shellQuote(workspace)} -- ${command}`
+}

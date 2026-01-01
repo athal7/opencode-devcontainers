@@ -1,6 +1,8 @@
 fileignoreconfig:
+- filename: plugin/helpers.js
+  checksum: c5dd8774f457c78790fedcc57dec4b3384f9c7b051afead84bc6a346eeb7449d
 - filename: test/test_plugin.bash
-  checksum: ec7393d0874adfea8622aa41a922aa67b873f433405e007d72ac9aa7b2adb3a6
+  checksum: 9289775e9dc52a53bf842049079346718233410fc0e5c55431e92684a5c053ca
 - filename: lib/ocdc-poll-config.bash
   checksum: 1fd8219a8825f57f6bc658eadb4204772b7ceb8c018bd72d6ab5bc99c74e4cd8
 - filename: share/ocdc/examples/com.ocdc.poll.plist
