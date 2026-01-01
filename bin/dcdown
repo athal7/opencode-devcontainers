@@ -17,9 +17,14 @@
 
 set -euo pipefail
 
-CACHE_DIR="${DCMULTI_CACHE_DIR:-${HOME}/.cache/devcontainer-multi}"
-PORTS_FILE="${CACHE_DIR}/ports.json"
-OVERRIDES_DIR="${CACHE_DIR}/overrides"
+# Source paths library
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../lib/ocdc-paths.bash"
+
+CACHE_DIR="$OCDC_CACHE_DIR"
+PORTS_FILE="$OCDC_PORTS_FILE"
+OVERRIDES_DIR="$OCDC_OVERRIDES_DIR"
+CLONES_DIR="$OCDC_CLONES_DIR"
 
 log() { echo "[dcdown] $*"; }
 error() { echo "[dcdown] ERROR: $*" >&2; exit 1; }
@@ -103,7 +108,7 @@ stop_container() {
   # Optionally remove clone
   if [[ "$REMOVE_CLONE" == "true" ]]; then
     # Check if this is in our clones directory
-    if [[ "$ws" == "${HOME}/.cache/devcontainer-clones/"* ]]; then
+    if [[ "$ws" == "${CLONES_DIR}/"* ]]; then
       log "Removing clone: $ws"
       rm -rf "$ws"
     fi

@@ -20,10 +20,17 @@ setup_test_env() {
   export TEST_CONFIG_DIR="$TEST_DIR/config"
   export TEST_CACHE_DIR="$TEST_DIR/cache"
   export TEST_CLONES_DIR="$TEST_DIR/clones"
+  export TEST_DATA_DIR="$TEST_DIR/data"
   
-  mkdir -p "$TEST_CONFIG_DIR" "$TEST_CACHE_DIR" "$TEST_CLONES_DIR"
+  mkdir -p "$TEST_CONFIG_DIR" "$TEST_CACHE_DIR" "$TEST_CLONES_DIR" "$TEST_DATA_DIR"
   
-  # Set env vars for scripts
+  # Set env vars for scripts (new OCDC vars)
+  export OCDC_CONFIG_DIR="$TEST_CONFIG_DIR"
+  export OCDC_CACHE_DIR="$TEST_CACHE_DIR"
+  export OCDC_CLONES_DIR="$TEST_CLONES_DIR"
+  export OCDC_DATA_DIR="$TEST_DATA_DIR"
+  
+  # Legacy env vars (for backward compatibility during transition)
   export DCMULTI_CONFIG_DIR="$TEST_CONFIG_DIR"
   export DCMULTI_CACHE_DIR="$TEST_CACHE_DIR"
   export DCMULTI_CLONES_DIR="$TEST_CLONES_DIR"

@@ -15,9 +15,13 @@
 
 set -euo pipefail
 
-CACHE_DIR="${DCMULTI_CACHE_DIR:-${HOME}/.cache/devcontainer-multi}"
-PORTS_FILE="${CACHE_DIR}/ports.json"
-CLONES_DIR="${DCMULTI_CLONES_DIR:-${HOME}/.cache/devcontainer-clones}"
+# Source paths library
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../lib/ocdc-paths.bash"
+
+CACHE_DIR="$OCDC_CACHE_DIR"
+PORTS_FILE="$OCDC_PORTS_FILE"
+CLONES_DIR="$OCDC_CLONES_DIR"
 
 # Parse arguments
 JSON_OUTPUT=false

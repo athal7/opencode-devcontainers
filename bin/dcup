@@ -37,7 +37,7 @@
 #   dcgo     - Navigate to an existing clone
 #
 # Configuration:
-#   ~/.config/devcontainer-multi/config.json
+#   ~/.config/ocdc/config.json
 #   {
 #     "portRangeStart": 13000,
 #     "portRangeEnd": 13099
@@ -45,13 +45,20 @@
 
 set -euo pipefail
 
-# Configuration (allow overrides for testing)
-CONFIG_DIR="${DCMULTI_CONFIG_DIR:-${HOME}/.config/devcontainer-multi}"
-CONFIG_FILE="${CONFIG_DIR}/config.json"
-CACHE_DIR="${DCMULTI_CACHE_DIR:-${HOME}/.cache/devcontainer-multi}"
-PORTS_FILE="${CACHE_DIR}/ports.json"
-OVERRIDES_DIR="${CACHE_DIR}/overrides"
-CLONES_DIR="${DCMULTI_CLONES_DIR:-${HOME}/.cache/devcontainer-clones}"
+# Source paths library
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/../lib/ocdc-paths.bash"
+
+# Run migration on first use
+ocdc_migrate_paths
+
+# Use new path variables (with backward-compatible aliases for readability)
+CONFIG_DIR="$OCDC_CONFIG_DIR"
+CONFIG_FILE="$OCDC_CONFIG_FILE"
+CACHE_DIR="$OCDC_CACHE_DIR"
+PORTS_FILE="$OCDC_PORTS_FILE"
+OVERRIDES_DIR="$OCDC_OVERRIDES_DIR"
+CLONES_DIR="$OCDC_CLONES_DIR"
 
 # Defaults
 DEFAULT_PORT_START=13000
@@ -93,9 +100,7 @@ is_vscode_terminal() {
 }
 
 # Ensure directories exist
-mkdir -p "$CONFIG_DIR" "$CACHE_DIR" "$OVERRIDES_DIR" "$CLONES_DIR"
-[[ -f "$PORTS_FILE" ]] || echo '{}' > "$PORTS_FILE"
-[[ -f "$CONFIG_FILE" ]] || echo '{}' > "$CONFIG_FILE"
+ocdc_ensure_dirs
 
 # Load configuration
 PORT_START=$(jq -r ".portRangeStart // $DEFAULT_PORT_START" "$CONFIG_FILE")
