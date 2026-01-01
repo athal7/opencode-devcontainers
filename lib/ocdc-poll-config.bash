@@ -77,7 +77,47 @@ _yaml_get_default() {
 # Schema Validation
 # =============================================================================
 
-# Validate a poll configuration file
+# Validate a poll configuration file against the JSON schema
+# Requires: check-jsonschema (pip install check-jsonschema)
+# Returns 0 if valid, 1 if invalid or tool not available
+# Usage: poll_config_validate_schema "/path/to/config.yaml" "/path/to/schema.json"
+poll_config_validate_schema() {
+  local config_file="$1"
+  local schema_file="${2:-}"
+  
+  # Find schema file if not provided
+  if [[ -z "$schema_file" ]]; then
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    schema_file="$(dirname "$script_dir")/share/ocdc/poll-config.schema.json"
+  fi
+  
+  # Check if check-jsonschema is available
+  if ! command -v check-jsonschema >/dev/null 2>&1; then
+    echo "Warning: check-jsonschema not installed, skipping schema validation" >&2
+    return 0
+  fi
+  
+  # Check files exist
+  if [[ ! -f "$config_file" ]]; then
+    echo "Error: Config file not found: $config_file" >&2
+    return 1
+  fi
+  
+  if [[ ! -f "$schema_file" ]]; then
+    echo "Warning: Schema file not found: $schema_file, skipping schema validation" >&2
+    return 0
+  fi
+  
+  # Run schema validation
+  if ! check-jsonschema --schemafile "$schema_file" "$config_file" 2>&1; then
+    return 1
+  fi
+  
+  return 0
+}
+
+# Validate a poll configuration file (basic validation)
 # Returns 0 if valid, 1 if invalid
 # Usage: poll_config_validate "/path/to/config.yaml"
 poll_config_validate() {

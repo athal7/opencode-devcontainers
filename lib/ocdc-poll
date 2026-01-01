@@ -143,6 +143,21 @@ expand_path() {
 # Process a single poll config
 process_poll() {
   local config_file="$1"
+  
+  # Validate config before processing
+  if ! poll_config_validate "$config_file"; then
+    log_error "Invalid config file: $config_file"
+    return 1
+  fi
+  
+  # Also validate against JSON schema if available
+  local schema_output
+  if ! schema_output=$(poll_config_validate_schema "$config_file" 2>&1); then
+    log_error "Config failed schema validation: $config_file"
+    log_error "$schema_output"
+    return 1
+  fi
+  
   local config_id
   config_id=$(poll_config_get "$config_file" ".id")
   
@@ -156,13 +171,9 @@ process_poll() {
     return 0
   fi
   
-  # Get fetch command
+  # Get fetch command (validated earlier, guaranteed to exist)
   local fetch_cmd
   fetch_cmd=$(poll_config_get "$config_file" ".fetch_command")
-  if [[ -z "$fetch_cmd" ]]; then
-    log_error "  No fetch_command defined"
-    return 1
-  fi
   
   # Execute fetch command
   log "  Fetching items..."
@@ -307,8 +318,8 @@ process_poll() {
     prompt_file="${OCDC_POLL_STATE_DIR}/prompt-${session_name}.txt"
     printf '%s' "$prompt" > "$prompt_file"
     
-    # Build opencode command with agent flag
-    local opencode_cmd="opencode --agent $session_agent"
+    # Build opencode command with agent flag (quote to prevent injection)
+    local opencode_cmd="opencode --agent \"$session_agent\""
     
     # Create tmux session running opencode with the prompt
     # Set OCDC_* environment variables so the plugin knows the context

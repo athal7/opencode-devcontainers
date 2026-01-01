@@ -441,6 +441,53 @@ test_load_prompt_from_file() {
 }
 
 # =============================================================================
+# Schema Validation Tests (requires check-jsonschema)
+# =============================================================================
+
+test_validate_against_schema_valid() {
+  # Skip if check-jsonschema not available
+  if ! command -v check-jsonschema >/dev/null 2>&1; then
+    return 0
+  fi
+  
+  source "$LIB_DIR/ocdc-poll-config.bash"
+  create_valid_config
+  
+  local schema_file
+  schema_file="$(dirname "$LIB_DIR")/share/ocdc/poll-config.schema.json"
+  
+  if [[ ! -f "$schema_file" ]]; then
+    echo "Schema file not found: $schema_file"
+    return 1
+  fi
+  
+  if ! poll_config_validate_schema "$OCDC_POLLS_DIR/github-issues.yaml" "$schema_file"; then
+    echo "Valid config should pass schema validation"
+    return 1
+  fi
+  return 0
+}
+
+test_validate_against_schema_invalid() {
+  # Skip if check-jsonschema not available
+  if ! command -v check-jsonschema >/dev/null 2>&1; then
+    return 0
+  fi
+  
+  source "$LIB_DIR/ocdc-poll-config.bash"
+  create_invalid_config_missing_id
+  
+  local schema_file
+  schema_file="$(dirname "$LIB_DIR")/share/ocdc/poll-config.schema.json"
+  
+  if poll_config_validate_schema "$OCDC_POLLS_DIR/invalid-missing-id.yaml" "$schema_file" 2>/dev/null; then
+    echo "Invalid config should fail schema validation"
+    return 1
+  fi
+  return 0
+}
+
+# =============================================================================
 # Run Tests
 # =============================================================================
 
@@ -466,7 +513,9 @@ for test_func in \
   test_render_template_multiple_vars \
   test_render_template_preserves_unknown_vars \
   test_load_prompt_from_template \
-  test_load_prompt_from_file
+  test_load_prompt_from_file \
+  test_validate_against_schema_valid \
+  test_validate_against_schema_invalid
 do
   setup
   run_test "${test_func#test_}" "$test_func"

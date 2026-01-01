@@ -13,6 +13,8 @@ fileignoreconfig:
   checksum: a2ad9e84e4ead1237000d9b361855b63e32a6f427a17f0703706b3a616264b99
 - filename: test/test_poll_config.bash
   checksum: 58689981ad53f2d8e3ec7050e03fa1a8d7eed51365f3d2147ebca9d5f0ae2829
+- filename: test/test_schema.bash
+  checksum: f257ed76b484237a40a2ed2b4488a604e760ac0e72886d8bc6da5989b30bed86
 - filename: lib/ocdc-poll
   checksum: 3d7076a52d1698fd04fb2e5ca44889710316e9febdefb05dba16ca34f244a989
 - filename: test/test_paths.bash
