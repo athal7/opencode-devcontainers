@@ -16,6 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BIN_DIR="$(dirname "$SCRIPT_DIR")/bin"
 source "${SCRIPT_DIR}/ocdc-paths.bash"
 source "${SCRIPT_DIR}/ocdc-poll-config.bash"
+source "${SCRIPT_DIR}/ocdc-file-lock.bash"
 
 # Ensure ocdc commands are available
 export PATH="$BIN_DIR:$PATH"
@@ -115,15 +116,19 @@ mark_processed() {
   local timestamp
   timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   
-  # Use flock for atomic updates to prevent race conditions
-  (
-    flock -x 200
-    local tmp
-    tmp=$(mktemp)
-    jq --arg key "$key" --arg config "$config_id" --arg ts "$timestamp" \
-      '.[$key] = {config: $config, processed_at: $ts}' "$STATE_FILE" > "$tmp"
-    mv "$tmp" "$STATE_FILE"
-  ) 200>"${STATE_FILE}.lock"
+  # Use mkdir-based locking for cross-platform compatibility (flock not on macOS)
+  lock_file "${STATE_FILE}.lock"
+  # Ensure lock is released even if jq/mv fails (set -e would otherwise leave stale lock)
+  trap 'unlock_file "${STATE_FILE}.lock"' EXIT
+  
+  local tmp
+  tmp=$(mktemp)
+  jq --arg key "$key" --arg config "$config_id" --arg ts "$timestamp" \
+    '.[$key] = {config: $config, processed_at: $ts}' "$STATE_FILE" > "$tmp"
+  mv "$tmp" "$STATE_FILE"
+  
+  trap - EXIT
+  unlock_file "${STATE_FILE}.lock"
 }
 
 # Get item field using jq mapping
