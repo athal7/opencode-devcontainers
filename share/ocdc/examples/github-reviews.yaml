@@ -46,26 +46,10 @@ repo_source:
 
 prompt:
   template: |
-    You are working in a devcontainer at {workspace} on branch {branch}.
+    Review PR #{number}: {title}
+    {source_url}
 
-    ## Task: Review Pull Request
-
-    **PR #{number}: {title}**
-    Repository: {repo}
-    Author: {author}
-    URL: {source_url}
-
-    Please review the code changes in this pull request:
-
-    1. Fetch and checkout the PR branch
-    2. Review the changes for:
-       - Code quality and best practices
-       - Potential bugs or edge cases
-       - Test coverage
-       - Documentation
-    3. Prepare review comments
-
-    **Important**: Wait for my approval before submitting the review to GitHub.
+    Wait for my approval before submitting the review to GitHub.
 
 session:
   name_template: "ocdc-review-{repo_short}-{number}"

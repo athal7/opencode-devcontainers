@@ -59,25 +59,10 @@ repo_source:
 
 prompt:
   template: |
-    You are working in a devcontainer at {workspace} on branch {branch}.
+    Work on Linear issue [{identifier}] {title}
+    {url}
 
-    ## Task: Work on Linear Issue
-
-    **[{identifier}] {title}**
-    Team: {team}
-    URL: {url}
-    Priority: {priority}
-
-    ### Description
     {description}
-
-    Please:
-    1. Understand the requirements from the issue description
-    2. Implement the changes
-    3. Write tests if appropriate
-    4. Prepare a pull request
-
-    When ready, create a PR and link it to this Linear issue.
 
 session:
   name_template: "ocdc-linear-{identifier}"
