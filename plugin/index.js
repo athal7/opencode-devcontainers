@@ -43,7 +43,9 @@ function autoInitFromEnv(sessionID) {
   if (!existsSync(workspace)) return
   
   // Extract repo name from workspace path
-  const parts = workspace.split("/")
+  // Normalize path by removing trailing slash to ensure consistent extraction
+  const normalizedPath = workspace.replace(/\/+$/, "")
+  const parts = normalizedPath.split("/")
   const repoName = parts[parts.length - 2] || "unknown"
   
   // Auto-save session context

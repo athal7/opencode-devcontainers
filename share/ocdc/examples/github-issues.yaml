@@ -12,6 +12,9 @@
 id: github-issues
 enabled: true
 
+# Source type for tracking (used by opencode plugin)
+source_type: github_issue
+
 # Command to fetch items - must output JSON array
 # Customize the repos and label to match your setup
 fetch_command: |

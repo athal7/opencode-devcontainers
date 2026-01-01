@@ -57,6 +57,29 @@ log_error() {
   echo -e "${RED}[poll]${NC} $*" >&2
 }
 
+# Check required dependencies
+check_dependencies() {
+  local missing=()
+  
+  command -v jq >/dev/null 2>&1 || missing+=("jq")
+  command -v tmux >/dev/null 2>&1 || missing+=("tmux")
+  command -v opencode >/dev/null 2>&1 || missing+=("opencode")
+  
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    log_error "Missing required dependencies: ${missing[*]}"
+    log_error "Install with: brew install ${missing[*]}"
+    return 1
+  fi
+  return 0
+}
+
+# Sanitize a string to be safe for use in file paths and tmux session names
+# Only allows alphanumeric characters, hyphens, underscores, and dots
+sanitize_name() {
+  local input="$1"
+  echo "$input" | tr -cd '[:alnum:]-_.'
+}
+
 show_help() {
   cat << 'EOF'
 Usage: ocdc poll [options]
@@ -85,18 +108,22 @@ is_processed() {
   jq -e --arg key "$key" '.[$key] != null' "$STATE_FILE" >/dev/null 2>&1
 }
 
-# Mark an item as processed
+# Mark an item as processed (with file locking to prevent race conditions)
 mark_processed() {
   local key="$1"
   local config_id="$2"
   local timestamp
   timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   
-  local tmp
-  tmp=$(mktemp)
-  jq --arg key "$key" --arg config "$config_id" --arg ts "$timestamp" \
-    '.[$key] = {config: $config, processed_at: $ts}' "$STATE_FILE" > "$tmp"
-  mv "$tmp" "$STATE_FILE"
+  # Use flock for atomic updates to prevent race conditions
+  (
+    flock -x 200
+    local tmp
+    tmp=$(mktemp)
+    jq --arg key "$key" --arg config "$config_id" --arg ts "$timestamp" \
+      '.[$key] = {config: $config, processed_at: $ts}' "$STATE_FILE" > "$tmp"
+    mv "$tmp" "$STATE_FILE"
+  ) 200>"${STATE_FILE}.lock"
 }
 
 # Get item field using jq mapping
@@ -173,6 +200,10 @@ process_poll() {
   local session_template
   session_template=$(poll_config_get "$config_file" ".session.name_template")
   
+  # Get source type (defaults to "poll" if not specified)
+  local source_type
+  source_type=$(poll_config_get_with_default "$config_file" ".source_type" "poll")
+  
   # Process each item
   echo "$items_json" | jq -c '.[]' | while read -r item; do
     # Extract fields
@@ -211,15 +242,28 @@ process_poll() {
       continue
     fi
     
+    # Check repo path exists
+    if [[ ! -d "$repo_path" ]]; then
+      log_error "    Repo path does not exist: $repo_path"
+      continue
+    fi
+    
     # Render templates
-    local session_name
-    session_name=$(poll_config_render_template "$session_template" \
+    local session_name_raw session_name
+    session_name_raw=$(poll_config_render_template "$session_template" \
       key="$key" \
       repo="$repo" \
       repo_short="$repo_short" \
       number="$number" \
       title="$title" \
       branch="$branch")
+    # Sanitize session name to prevent command injection and path traversal
+    session_name=$(sanitize_name "$session_name_raw")
+    
+    if [[ -z "$session_name" ]]; then
+      log_error "    Session name is empty after sanitization"
+      continue
+    fi
     
     local prompt
     prompt=$(poll_config_render_template "$prompt_template" \
@@ -254,6 +298,7 @@ process_poll() {
     log "    Creating tmux session: $session_name"
     
     # Write prompt to temp file to avoid shell escaping issues
+    # Use sanitized session_name in filename to prevent path traversal
     local prompt_file
     prompt_file="${OCDC_POLL_STATE_DIR}/prompt-${session_name}.txt"
     printf '%s' "$prompt" > "$prompt_file"
@@ -261,12 +306,16 @@ process_poll() {
     # Create tmux session running opencode with the prompt
     # Set OCDC_* environment variables so the plugin knows the context
     # The session runs in the clone directory
-    tmux new-session -d -s "$session_name" -c "$clone_dir" \
+    if ! tmux new-session -d -s "$session_name" -c "$clone_dir" \
       -e "OCDC_WORKSPACE=$clone_dir" \
       -e "OCDC_BRANCH=$branch" \
       -e "OCDC_SOURCE_URL=$url" \
-      -e "OCDC_SOURCE_TYPE=github_issue" \
-      "opencode --prompt \"\$(cat '$prompt_file')\"; rm -f '$prompt_file'; echo 'Session complete. Press enter to close...'; read"
+      -e "OCDC_SOURCE_TYPE=$source_type" \
+      "opencode --prompt \"\$(cat '$prompt_file')\"; rm -f '$prompt_file'; echo 'Session complete. Press enter to close...'; read"; then
+      log_error "    Failed to create tmux session"
+      rm -f "$prompt_file"  # Cleanup prompt file on failure
+      continue
+    fi
     
     log_success "    Session $session_name created"
     log "    Attach with: tmux attach -t $session_name"
@@ -278,6 +327,9 @@ process_poll() {
 
 # Main
 main() {
+  # Check dependencies first
+  check_dependencies || exit 1
+  
   # Parse arguments
   while [[ $# -gt 0 ]]; do
     case "$1" in
