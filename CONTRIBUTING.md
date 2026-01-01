@@ -96,52 +96,38 @@ Scripts support these env vars to allow test isolation:
 Releases are automated via GitHub Actions. To create a release:
 
 1. Update version in `bin/ocdc`
-2. Update version and URL in `Formula/ocdc.rb`
-3. Commit: `git commit -am "chore: bump version to v1.0.0"`
-4. Tag: `git tag v1.0.0`
-5. Push: `git push origin main --tags`
-6. Calculate SHA256: `curl -L https://github.com/athal7/ocdc/archive/refs/tags/v1.0.0.tar.gz | shasum -a 256`
-7. Update `Formula/ocdc.rb` with the SHA256
-8. Commit and push the SHA update
+2. Commit: `git commit -am "chore: bump version to v1.0.0"`
+3. Tag: `git tag v1.0.0`
+4. Push: `git push origin main --tags`
+5. Calculate SHA256: `curl -L https://github.com/athal7/ocdc/archive/refs/tags/v1.0.0.tar.gz | shasum -a 256`
+6. Update `Formula/ocdc.rb` in the [homebrew-tap](https://github.com/athal7/homebrew-tap) repo with:
+   - New version number
+   - New URL
+   - New SHA256
+7. Commit and push to homebrew-tap
 
 The release workflow will run tests and create a GitHub release with the tarball.
 
-## Homebrew Tap Setup
+## Homebrew Formula
 
-The Homebrew formula lives in `Formula/ocdc.rb` and can be installed from a tap.
-
-### Creating the Tap Repository
-
-If you're setting this up for the first time:
-
-1. Create a new GitHub repo named `homebrew-tap`
-2. Add the formula:
-   ```bash
-   mkdir Formula
-   cp Formula/ocdc.rb homebrew-tap/Formula/
-   git add Formula/ocdc.rb
-   git commit -m "Add ocdc formula"
-   git push
-   ```
+The Homebrew formula is maintained separately in the [homebrew-tap](https://github.com/athal7/homebrew-tap) repository, not in this repo.
 
 ### Installing from the Tap
 
-Users can then install with:
-```bash
-brew tap athal7/tap
-brew install ocdc
-```
-
-Or in one command:
+Users install with:
 ```bash
 brew install athal7/tap/ocdc
 ```
 
-### Testing the Formula Locally
+### Updating the Formula
 
-Before publishing:
-```bash
-brew install --build-from-source Formula/ocdc.rb
-brew test ocdc
-brew audit --strict ocdc
-```
+To update the formula after a release:
+
+1. Clone the tap repo: `git clone https://github.com/athal7/homebrew-tap.git`
+2. Edit `Formula/ocdc.rb` with the new version, URL, and SHA256
+3. Test locally: `brew install --build-from-source Formula/ocdc.rb`
+4. Run tests: `brew test ocdc`
+5. Audit: `brew audit --strict ocdc`
+6. Commit and push
+
+The tap repository has CI that automatically tests the formula.
