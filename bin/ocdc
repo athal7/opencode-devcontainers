@@ -25,9 +25,10 @@ set -euo pipefail
 
 VERSION="2.1.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LIB_DIR="${SCRIPT_DIR}/../lib"
 
 # Source paths library for OCDC_* variables
-source "${SCRIPT_DIR}/../lib/ocdc-paths.bash" 2>/dev/null || true
+source "${LIB_DIR}/ocdc-paths.bash" 2>/dev/null || true
 
 # Plugin paths
 PLUGIN_SOURCE="${SCRIPT_DIR}/../plugin"
@@ -168,22 +169,22 @@ dispatch() {
   
   case "$cmd" in
     up)
-      exec "$SCRIPT_DIR/dcup" "$@"
+      exec "$LIB_DIR/ocdc-up" "$@"
       ;;
     down)
-      exec "$SCRIPT_DIR/dcdown" "$@"
+      exec "$LIB_DIR/ocdc-down" "$@"
       ;;
     exec)
-      exec "$SCRIPT_DIR/dcexec" "$@"
+      exec "$LIB_DIR/ocdc-exec" "$@"
       ;;
     list)
-      exec "$SCRIPT_DIR/dclist" "$@"
+      exec "$LIB_DIR/ocdc-list" "$@"
       ;;
     go)
-      exec "$SCRIPT_DIR/dcgo" "$@"
+      exec "$LIB_DIR/ocdc-go" "$@"
       ;;
     tui)
-      exec "$SCRIPT_DIR/dctui" "$@"
+      exec "$LIB_DIR/ocdc-tui" "$@"
       ;;
     plugin)
       plugin_cmd "$@"
@@ -209,7 +210,7 @@ main() {
   if [[ $# -eq 0 ]]; then
     # If stdin is a terminal, launch TUI
     if [[ -t 0 ]] && [[ -t 1 ]]; then
-      exec "$SCRIPT_DIR/dctui"
+      exec "$LIB_DIR/ocdc-tui"
     else
       # Non-interactive - show help
       show_help
