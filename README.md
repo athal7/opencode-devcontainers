@@ -82,7 +82,7 @@ ocdc can automatically poll external sources (GitHub PRs, Linear issues) and cre
 ```bash
 # Copy example config
 mkdir -p ~/.config/ocdc/polls
-cp "$(brew --prefix ocdc)/share/ocdc/examples/github-issues.yaml" ~/.config/ocdc/polls/
+cp "$(brew --prefix)/share/ocdc/examples/github-issues.yaml" ~/.config/ocdc/polls/
 
 # Edit with your repo and label
 vim ~/.config/ocdc/polls/github-issues.yaml
@@ -94,15 +94,20 @@ brew services start ocdc
 tail -f "$(brew --prefix)/var/log/ocdc-poll.log"
 ```
 
+**Note**: The OpenCode plugin is automatically installed to `~/.config/opencode/plugins/ocdc/` during Homebrew installation.
+
 ### Configuration
 
 Poll configs live in `~/.config/ocdc/polls/`. Each config defines:
 - `fetch_command` - Shell command that outputs JSON array of items
-- `item_mapping` - jq expressions to extract fields
+- `item_mapping` - jq expressions to extract fields (key, repo, branch, title, body, url, etc.)
 - `repo_paths` - Map repo names to local paths
-- `prompt` - Template for OpenCode session prompt
+- `prompt.template` - Template for OpenCode session prompt
+- `session.name_template` - Template for tmux session name
 
-See the example configs in [`share/ocdc/examples/`](share/ocdc/examples/) for the full schema.
+**Available template variables**: `{{key}}`, `{{repo}}`, `{{repo_short}}`, `{{number}}`, `{{title}}`, `{{body}}`, `{{url}}`, `{{branch}}`
+
+Example configs are installed to `$(brew --prefix)/share/ocdc/examples/` and documented in the [examples directory](share/ocdc/examples/).
 
 ### Manual Polling
 

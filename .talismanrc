@@ -15,4 +15,6 @@ fileignoreconfig:
   checksum: c99eca6d022f1c0ad836c57ee974d3110b32b19ffe9578ef4b30f5d5b51300dd
 - filename: Formula/ocdc.rb
   checksum: 7b54a7e03c9be248e67247503c745cf1a77cb4813752db651e437f15af568b02
+- filename: README.md
+  checksum: 049debb1cbc14614292c11a09d87cf38e8c1e83dca05d6cdc521cedf02fcd6f5
 version: "1.0"
