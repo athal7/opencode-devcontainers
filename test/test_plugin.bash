@@ -1214,6 +1214,108 @@ can_run_integration_tests() {
   return 0
 }
 
+# =============================================================================
+# Fresh Plugin Installation Test
+# =============================================================================
+# This test verifies the plugin can be installed fresh and loaded by opencode.
+# It catches issues like:
+#   - Missing dependencies (@opencode-ai/plugin resolution)
+#   - Import path problems
+#   - Module resolution issues with symlinks vs copies
+#
+# The test:
+#   1. Backs up existing plugin installation
+#   2. Copies plugin fresh from repo to ~/.config/opencode/plugins/ocdc
+#   3. Verifies opencode can start and load the plugin
+#   4. Restores original installation
+
+test_fresh_plugin_installation() {
+  # Use real HOME, not test HOME (unit tests may have changed HOME)
+  local real_home saved_home
+  saved_home="$HOME"
+  real_home=$(getent passwd "$USER" 2>/dev/null | cut -d: -f6 || echo "/Users/$USER")
+  export HOME="$real_home"
+  
+  # Skip if opencode not installed
+  if ! command -v opencode &>/dev/null; then
+    echo "SKIP: opencode not installed"
+    return 0
+  fi
+  
+  local plugin_dest="$real_home/.config/opencode/plugins/ocdc"
+  local plugin_backup="$real_home/.config/opencode/plugins/ocdc.backup.$$"
+  local config_file="$real_home/.config/opencode/opencode.json"
+  local config_backup="$real_home/.config/opencode/opencode.json.backup.$$"
+  
+  # Backup existing installation if present
+  if [[ -e "$plugin_dest" ]]; then
+    cp -r "$plugin_dest" "$plugin_backup"
+  fi
+  
+  # Backup config if present
+  if [[ -f "$config_file" ]]; then
+    cp "$config_file" "$config_backup"
+  fi
+  
+  # Cleanup function - always restore from backups
+  cleanup_fresh_install_test() {
+    # Restore original plugin
+    rm -rf "$plugin_dest"
+    if [[ -e "$plugin_backup" ]]; then
+      mv "$plugin_backup" "$plugin_dest"
+    fi
+    # Restore original config (this preserves all other plugins)
+    if [[ -f "$config_backup" ]]; then
+      mv "$config_backup" "$config_file"
+    fi
+    # Restore HOME
+    export HOME="$saved_home"
+  }
+  
+  # Set trap to cleanup on any exit
+  trap cleanup_fresh_install_test RETURN
+  
+  # Remove existing plugin and copy fresh from repo
+  rm -rf "$plugin_dest"
+  mkdir -p "$(dirname "$plugin_dest")"
+  cp -r "$PLUGIN_DIR" "$plugin_dest"
+  
+  # Config already has the plugin path, no need to modify
+  # (backup has the path, and we're testing if fresh copy works)
+  
+  # Test that opencode can start and load the plugin
+  # Use a simple prompt that should work quickly
+  local output
+  output=$(perl -e 'alarm 30; exec @ARGV' opencode run "Say the word OK and nothing else" 2>&1)
+  local exit_code=$?
+  
+  # Check results
+  if [[ $exit_code -ne 0 ]]; then
+    echo "FAIL: opencode failed to start with fresh plugin installation"
+    echo "Exit code: $exit_code"
+    echo "Output: $output"
+    
+    # Check for common errors
+    if echo "$output" | grep -q "Cannot find module"; then
+      echo ""
+      echo "MODULE RESOLUTION ERROR: Plugin cannot resolve @opencode-ai/plugin"
+      echo "This happens when plugin is symlinked instead of copied."
+      echo "Bun resolves modules from the real path, not symlink location."
+    fi
+    
+    return 1
+  fi
+  
+  # Verify we got a response (not just startup)
+  if ! echo "$output" | grep -qiE "(ok|hello|hi|assistant|claude)"; then
+    echo "FAIL: opencode started but didn't respond properly"
+    echo "Output: $output"
+    return 1
+  fi
+  
+  return 0
+}
+
 # Cross-platform timeout wrapper
 # Uses perl alarm which works on macOS and Linux
 run_with_timeout() {
@@ -1607,6 +1709,11 @@ do
   run_test "${test_func#test_}" "$test_func"
   teardown
 done
+
+echo ""
+echo "Fresh Plugin Installation Test:"
+# Run this test separately - it modifies real HOME config
+run_test "fresh_plugin_installation" test_fresh_plugin_installation
 
 echo ""
 echo "OpenCode Runtime Integration Tests (CI=${CI:-false}):"
