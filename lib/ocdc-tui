@@ -3,7 +3,7 @@
 # ocdc-tui - Interactive TUI for managing devcontainer instances
 #
 # Usage:
-#   dctui              # Launch interactive TUI
+#   ocdc tui              # Launch interactive TUI
 #
 # Navigation:
 #   ↑/↓ or j/k         Move selection up/down
@@ -15,10 +15,10 @@
 #   q                  Quit
 #
 # Related commands:
-#   dcup     - Start devcontainer
-#   dcdown   - Stop devcontainer  
-#   dclist   - List instances (non-interactive)
-#   dcclean  - Clean up orphaned clones
+#   ocdc up     - Start devcontainer
+#   ocdc down   - Stop devcontainer  
+#   ocdc list   - List instances (non-interactive)
+#   ocdc clean  - Clean up orphaned clones
 
 set -euo pipefail
 
@@ -221,7 +221,7 @@ open_workspace() {
     tput cnorm
     echo "Starting container for ${REPOS[$idx]}/${BRANCHES[$idx]}..."
     echo ""
-    (cd "$workspace" && dcup --no-open) 2>&1 || true
+    (cd "$workspace" && ocdc up --no-open) 2>&1 || true
     load_instances
     tput civis
     # Fall through to open it
@@ -269,7 +269,7 @@ stop_instance() {
   else
     # Container - stop it and optionally remove clone
     echo -e "Stopping ${BOLD}${repo}/${branch}${RESET} (port ${PORTS[$idx]})..."
-    dcdown "$workspace" 2>&1 || true
+    ocdc down "$workspace" 2>&1 || true
     
     # If it's a clone, offer to remove it
     if [[ "$workspace" == "$CLONES_DIR"* ]]; then
@@ -379,9 +379,9 @@ main() {
             continue
           fi
           
-          dcup "$branch" --no-open || true
+          ocdc up "$branch" --no-open || true
         else
-          dcup --no-open || true
+          ocdc up --no-open || true
         fi
         echo ""
         echo "Press any key to continue..."
@@ -405,7 +405,7 @@ main() {
         clear
         tput cnorm
         if confirm "Stop ALL containers?"; then
-          dcdown --all || true
+          ocdc down --all || true
         fi
         echo ""
         echo "Press any key to continue..."

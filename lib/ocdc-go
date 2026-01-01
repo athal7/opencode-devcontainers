@@ -3,22 +3,22 @@
 # ocdc-go - Navigate to an existing devcontainer clone
 #
 # Usage:
-#   dcgo                    # List available clones for current repo
-#   dcgo <branch>           # Go to specific branch clone
-#   dcgo --vscode <branch>  # Open in VS Code instead of printing cd
+#   ocdc go                    # List available clones for current repo
+#   ocdc go <branch>           # Go to specific branch clone
+#   ocdc go --vscode <branch>  # Open in VS Code instead of printing cd
 #
 # Examples:
-#   dcgo feature-x          # Print: cd ~/.cache/devcontainer-clones/myapp/feature-x
-#   dcgo --vscode feature-x # Opens VS Code in that directory
-#   eval $(dcgo feature-x)  # Actually cd to the directory
+#   ocdc go feature-x          # Print: cd ~/.cache/devcontainer-clones/myapp/feature-x
+#   ocdc go --vscode feature-x # Opens VS Code in that directory
+#   eval $(ocdc go feature-x)  # Actually cd to the directory
 #
 # In VS Code terminal, automatically opens VS Code window.
 # In other terminals, prints the cd command (pipe to eval to execute).
 #
 # Related commands:
-#   dcup     - Start devcontainer (creates clone if needed)
-#   dclist   - List active instances
-#   dcdown   - Stop container
+#   ocdc up     - Start devcontainer (creates clone if needed)
+#   ocdc list   - List active instances
+#   ocdc down   - Stop container
 
 set -euo pipefail
 
@@ -100,7 +100,7 @@ if [[ -z "$BRANCH" ]]; then
   
   clones=$(list_clones "$REPO")
   if [[ -z "$clones" ]]; then
-    log "No clones found. Create one with: dcup <branch>"
+    log "No clones found. Create one with: ocdc up <branch>"
     exit 0
   fi
   
@@ -111,7 +111,7 @@ if [[ -z "$BRANCH" ]]; then
   done
   
   echo ""
-  log "Usage: dcgo <branch>"
+  log "Usage: ocdc go <branch>"
   exit 0
 fi
 
@@ -131,7 +131,7 @@ else
 fi
 
 if [[ -z "${WORKSPACE:-}" ]] || [[ ! -d "$WORKSPACE" ]]; then
-  error "Clone not found for branch '$BRANCH'. Create it with: dcup $BRANCH"
+  error "Clone not found for branch '$BRANCH'. Create it with: ocdc up $BRANCH"
 fi
 
 # Navigate or open

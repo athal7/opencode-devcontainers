@@ -118,6 +118,21 @@ test_helper_no_legacy_project_name() {
   return 0
 }
 
+test_devcontainer_setup_no_legacy_project_name() {
+  local file="$PROJECT_DIR/.devcontainer/setup.sh"
+  if [[ ! -f "$file" ]]; then
+    echo "File not found: $file"
+    return 1
+  fi
+  # Check for devcontainer-multi in comments
+  if grep -nE 'devcontainer-multi' "$file" 2>/dev/null; then
+    echo "  Found 'devcontainer-multi' in: $file"
+    grep -nE 'devcontainer-multi' "$file" | head -3 | sed 's/^/    /'
+    return 1
+  fi
+  return 0
+}
+
 # =============================================================================
 # Run Tests
 # =============================================================================
@@ -131,7 +146,8 @@ for test_func in \
   test_ocdc_list_no_legacy_commands \
   test_ocdc_go_no_legacy_commands \
   test_ocdc_tui_no_legacy_commands \
-  test_helper_no_legacy_project_name
+  test_helper_no_legacy_project_name \
+  test_devcontainer_setup_no_legacy_project_name
 do
   run_test "${test_func#test_}" "$test_func"
 done

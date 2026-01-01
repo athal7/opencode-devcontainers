@@ -3,15 +3,15 @@
 # ocdc-list - List devcontainer instances and clones
 #
 # Usage:
-#   dclist           # List all tracked instances and orphaned clones
-#   dclist --json    # Output as JSON
-#   dclist --active  # Only show instances with running containers
+#   ocdc list           # List all tracked instances and orphaned clones
+#   ocdc list --json    # Output as JSON
+#   ocdc list --active  # Only show instances with running containers
 #
 # Related commands:
-#   dcup     - Start devcontainer
-#   dcdown   - Stop devcontainer
-#   dcgo     - Navigate to clone
-#   dcclean  - Clean up orphaned clones
+#   ocdc up      - Start devcontainer
+#   ocdc down    - Stop devcontainer
+#   ocdc go      - Navigate to clone
+#   ocdc clean   - Clean up orphaned clones
 
 set -euo pipefail
 
@@ -204,9 +204,9 @@ else
   echo "* = current directory"
   echo ""
   echo "Commands:"
-  echo "  dcgo <branch>       Navigate to clone"
-  echo "  dcexec <cmd>        Execute command in container"
-  echo "  dcdown              Stop current container"
-  echo "  dcclean             Clean up orphaned clones"
-  echo "  dctui               Interactive TUI"
+  echo "  ocdc go <branch>       Navigate to clone"
+  echo "  ocdc exec <cmd>        Execute command in container"
+  echo "  ocdc down              Stop current container"
+  echo "  ocdc clean             Clean up orphaned clones"
+  echo "  ocdc tui               Interactive TUI"
 fi

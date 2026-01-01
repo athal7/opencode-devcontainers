@@ -9,14 +9,14 @@
 #   - Tracking port assignments to avoid conflicts
 #
 # Usage:
-#   dcup                    # Start devcontainer for current directory
-#   dcup <branch>           # Create clone for branch, start devcontainer
-#   dcup --remove-existing  # Rebuild container from scratch
-#   dcup --no-open          # Don't open VS Code (just start container)
+#   ocdc up                    # Start devcontainer for current directory
+#   ocdc up <branch>           # Create clone for branch, start devcontainer
+#   ocdc up --remove-existing  # Rebuild container from scratch
+#   ocdc up --no-open          # Don't open VS Code (just start container)
 #
 # Examples:
-#   cd ~/Projects/myapp && dcup              # Start on port 13000
-#   cd ~/Projects/myapp && dcup feature-x    # Clone on port 13001
+#   cd ~/Projects/myapp && ocdc up              # Start on port 13000
+#   cd ~/Projects/myapp && ocdc up feature-x    # Clone on port 13001
 #
 # The container's internal port (e.g., 3000) is mapped to the assigned host port.
 # Access your app at http://localhost:<assigned-port>
@@ -31,10 +31,10 @@
 #   Clones are fully self-contained and work reliably with devcontainers.
 #
 # Related commands:
-#   dcdown   - Stop container and release port
-#   dclist   - List active instances
-#   dcexec   - Execute command in container
-#   dcgo     - Navigate to an existing clone
+#   ocdc down   - Stop container and release port
+#   ocdc list   - List active instances
+#   ocdc exec   - Execute command in container
+#   ocdc go     - Navigate to an existing clone
 #
 # Configuration:
 #   ~/.config/ocdc/config.json
@@ -260,7 +260,7 @@ find_available_port() {
       fi
     fi
   done
-  error "No available ports in range $PORT_START-$PORT_END. Use 'dcdown' to stop unused instances or 'dclist' to see active ones."
+  error "No available ports in range $PORT_START-$PORT_END. Use 'ocdc down' to stop unused instances or 'ocdc list' to see active ones."
 }
 
 # Get or assign port for this workspace
@@ -375,15 +375,15 @@ if devcontainer up "${UP_ARGS[@]}"; then
     log "To navigate to the clone:"
     echo "  cd $WORKSPACE"
     echo ""
-    log "Or use: dcgo $BRANCH"
+    log "Or use: ocdc go $BRANCH"
   fi
   
   echo ""
   log "Useful commands:"
-  log "  dcexec <cmd>     - Execute command in container"
-  log "  dcdown           - Stop this container"
-  log "  dclist           - List all instances"
-  [[ -n "$BRANCH" ]] && log "  dcgo $BRANCH     - Navigate to this clone"
+  log "  ocdc exec <cmd>     - Execute command in container"
+  log "  ocdc down           - Stop this container"
+  log "  ocdc list           - List all instances"
+  [[ -n "$BRANCH" ]] && log "  ocdc go $BRANCH     - Navigate to this clone"
 else
   # Clean up port assignment on failure
   tmp=$(mktemp)
