@@ -4,6 +4,9 @@
 #
 # Usage:
 #   ocdc poll [--once] [--dry-run] [--config <name>]
+#   ocdc poll sessions           # List active poll sessions
+#   ocdc poll attach <pattern>   # Attach to a session
+#   ocdc poll logs [--follow]    # View poll logs
 #
 # Options:
 #   --once      Run one poll cycle and exit (default)
@@ -26,6 +29,7 @@ STATE_FILE="${OCDC_POLL_STATE_DIR}/processed.json"
 
 # Ensure state directory and file exist
 mkdir -p "$OCDC_POLL_STATE_DIR"
+mkdir -p "$OCDC_POLL_LOG_DIR"
 [[ -f "$STATE_FILE" ]] || echo '{}' > "$STATE_FILE"
 
 # Colors
@@ -42,20 +46,342 @@ VERBOSE=false
 DAEMON=false
 INTERVAL=300
 
+# Current poll ID for structured logging
+CURRENT_POLL_ID=""
+
+# =============================================================================
+# Logging with file output
+# =============================================================================
+
+# Rotate log file if it exceeds max lines
+# Usage: rotate_log_if_needed [log_file] [max_lines] [keep_lines]
+rotate_log_if_needed() {
+  local log_file="${1:-$OCDC_POLL_LOG_FILE}"
+  local max_lines="${2:-10000}"
+  local keep_lines="${3:-5000}"
+  
+  [[ ! -f "$log_file" ]] && return 0
+  
+  local current_lines
+  current_lines=$(wc -l < "$log_file" 2>/dev/null | tr -d ' ' || echo 0)
+  
+  if [[ $current_lines -gt $max_lines ]]; then
+    local tmp_file="${log_file}.tmp"
+    tail -n "$keep_lines" "$log_file" > "$tmp_file"
+    mv "$tmp_file" "$log_file"
+  fi
+}
+
+# Write log entry to file with timestamp and optional poll ID
+_log_to_file() {
+  local message="$1"
+  
+  # Ensure log directory exists
+  mkdir -p "$OCDC_POLL_LOG_DIR"
+  
+  # Rotate if needed (check every write, cheap operation)
+  rotate_log_if_needed
+  
+  local timestamp
+  timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  
+  local prefix=""
+  [[ -n "$CURRENT_POLL_ID" ]] && prefix="[$CURRENT_POLL_ID] "
+  
+  echo "${timestamp} ${prefix}${message}" >> "$OCDC_POLL_LOG_FILE"
+}
+
 log() {
   echo -e "${BLUE}[poll]${NC} $*" >&2
+  _log_to_file "$*"
 }
 
 log_success() {
   echo -e "${GREEN}[poll]${NC} $*" >&2
+  _log_to_file "$*"
 }
 
 log_warn() {
   echo -e "${YELLOW}[poll]${NC} $*" >&2
+  _log_to_file "WARN: $*"
 }
 
 log_error() {
   echo -e "${RED}[poll]${NC} $*" >&2
+  _log_to_file "ERROR: $*"
+}
+
+# =============================================================================
+# Session Management Functions
+# =============================================================================
+
+# Convert seconds to human-readable age (e.g., "2h", "30m", "1d")
+format_age() {
+  local seconds="$1"
+  if [[ $seconds -lt 60 ]]; then
+    echo "${seconds}s"
+  elif [[ $seconds -lt 3600 ]]; then
+    echo "$((seconds / 60))m"
+  elif [[ $seconds -lt 86400 ]]; then
+    echo "$((seconds / 3600))h"
+  else
+    echo "$((seconds / 86400))d"
+  fi
+}
+
+# Get OCDC metadata from a tmux session
+# Returns JSON: {"poll": "...", "key": "...", "workspace": "...", "created": "..."}
+get_session_metadata() {
+  local session="$1"
+  local env_output
+  env_output=$(tmux show-environment -t "$session" 2>/dev/null) || return 1
+  
+  # Parse OCDC_* variables from output
+  local poll_config key workspace
+  poll_config=$(echo "$env_output" | grep '^OCDC_POLL_CONFIG=' | cut -d= -f2- || true)
+  key=$(echo "$env_output" | grep '^OCDC_ITEM_KEY=' | cut -d= -f2- || true)
+  workspace=$(echo "$env_output" | grep '^OCDC_WORKSPACE=' | cut -d= -f2- || true)
+  
+  # Get session creation time for age calculation
+  local created
+  created=$(tmux display-message -t "$session" -p '#{session_created}' 2>/dev/null || echo "0")
+  
+  jq -n --arg poll "$poll_config" --arg key "$key" \
+        --arg workspace "$workspace" --arg created "$created" \
+    '{poll: $poll, key: $key, workspace: $workspace, created: $created}'
+}
+
+# Find sessions matching a pattern
+# Returns newline-separated list of "session_name|item_key" pairs
+find_matching_sessions() {
+  local pattern="$1"
+  
+  while IFS= read -r session; do
+    [[ -z "$session" ]] && continue
+    
+    local metadata key poll_config
+    metadata=$(get_session_metadata "$session") || continue
+    poll_config=$(echo "$metadata" | jq -r '.poll // empty')
+    [[ -z "$poll_config" ]] && continue  # Not an ocdc poll session
+    
+    key=$(echo "$metadata" | jq -r '.key // empty')
+    
+    # Check for match: exact key, substring key, or substring session name
+    if [[ "$key" == "$pattern" ]] || \
+       [[ "$key" == *"$pattern"* ]] || \
+       [[ "$session" == *"$pattern"* ]]; then
+      echo "${session}|${key}"
+    fi
+  done < <(tmux list-sessions -F '#{session_name}' 2>/dev/null)
+}
+
+# Interactive session selection
+# Args: session_name|key pairs
+# Returns: selected session_name|key pair
+select_session() {
+  local -a sessions=("$@")
+  local count=${#sessions[@]}
+  
+  if [[ $count -eq 0 ]]; then
+    return 1
+  elif [[ $count -eq 1 ]]; then
+    echo "${sessions[0]}"
+    return 0
+  fi
+  
+  # Check if interactive
+  if [[ ! -t 0 ]]; then
+    log_error "Multiple matches found. Specify a more precise pattern."
+    return 1
+  fi
+  
+  echo "Multiple sessions match:" >&2
+  for i in "${!sessions[@]}"; do
+    local session key
+    session="${sessions[$i]%%|*}"
+    key="${sessions[$i]#*|}"
+    printf "  %d) %s (%s)\n" "$((i+1))" "$session" "$key" >&2
+  done
+  
+  echo -n "Select [1-$count]: " >&2
+  read -r choice
+  
+  if [[ "$choice" =~ ^[0-9]+$ ]] && [[ $choice -ge 1 ]] && [[ $choice -le $count ]]; then
+    echo "${sessions[$((choice-1))]}"
+    return 0
+  else
+    log_error "Invalid selection."
+    return 1
+  fi
+}
+
+# =============================================================================
+# Subcommand: sessions
+# =============================================================================
+
+poll_sessions_cmd() {
+  # Handle --help
+  if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+    cat << 'EOF'
+Usage: ocdc poll sessions
+
+List active poll-created tmux sessions.
+
+Output columns:
+  SESSION   tmux session name
+  POLL      poll config ID that created the session
+  ITEM      item key (e.g., owner/repo-issue-42)
+  AGE       time since session was created
+EOF
+    return 0
+  fi
+  
+  local now
+  now=$(date +%s)
+  
+  # Header
+  printf "%-30s %-16s %-24s %s\n" "SESSION" "POLL" "ITEM" "AGE"
+  
+  # List all tmux sessions, filter to those with OCDC_POLL_CONFIG
+  local found=false
+  while IFS= read -r session; do
+    [[ -z "$session" ]] && continue
+    
+    local metadata
+    metadata=$(get_session_metadata "$session") || continue
+    
+    local poll_config key created
+    poll_config=$(echo "$metadata" | jq -r '.poll // empty')
+    [[ -z "$poll_config" ]] && continue  # Not an ocdc poll session
+    
+    key=$(echo "$metadata" | jq -r '.key // "unknown"')
+    created=$(echo "$metadata" | jq -r '.created // "0"')
+    
+    local age_seconds age
+    age_seconds=$((now - created))
+    [[ $age_seconds -lt 0 ]] && age_seconds=0  # Handle clock skew
+    age=$(format_age "$age_seconds")
+    
+    printf "%-30s %-16s %-24s %s\n" "$session" "$poll_config" "$key" "$age"
+    found=true
+  done < <(tmux list-sessions -F '#{session_name}' 2>/dev/null)
+  
+  if [[ "$found" == "false" ]]; then
+    echo "No active poll sessions." >&2
+  fi
+}
+
+# =============================================================================
+# Subcommand: attach
+# =============================================================================
+
+poll_attach_cmd() {
+  if [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+    cat << 'EOF'
+Usage: ocdc poll attach <pattern>
+
+Attach to a poll-created tmux session.
+
+Arguments:
+  pattern    Item key or session name (partial match supported)
+
+Examples:
+  ocdc poll attach myorg/api-issue-42    # Exact key match
+  ocdc poll attach issue-42              # Partial match
+  ocdc poll attach api                   # Interactive if multiple
+EOF
+    return 0
+  fi
+  
+  if [[ $# -eq 0 ]]; then
+    log_error "Usage: ocdc poll attach <pattern>"
+    log_error "Run 'ocdc poll attach --help' for more information."
+    return 1
+  fi
+  
+  local pattern="$1"
+  local -a matches=()
+  
+  while IFS= read -r match; do
+    [[ -n "$match" ]] && matches+=("$match")
+  done < <(find_matching_sessions "$pattern")
+  
+  if [[ ${#matches[@]} -eq 0 ]]; then
+    log_error "No sessions matching '$pattern'"
+    echo "" >&2
+    echo "Available sessions:" >&2
+    poll_sessions_cmd >&2
+    return 1
+  fi
+  
+  local selected
+  selected=$(select_session "${matches[@]}") || return 1
+  
+  local session="${selected%%|*}"
+  local key="${selected#*|}"
+  
+  log "Attaching to: $session ($key)"
+  exec tmux attach -t "$session"
+}
+
+# =============================================================================
+# Subcommand: logs
+# =============================================================================
+
+poll_logs_cmd() {
+  local follow=false
+  local poll_filter=""
+  local lines=50
+  
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --follow|-f) follow=true; shift ;;
+      --poll) poll_filter="$2"; shift 2 ;;
+      --lines|-n) lines="$2"; shift 2 ;;
+      --help|-h)
+        cat << 'EOF'
+Usage: ocdc poll logs [options]
+
+View poll orchestrator logs.
+
+Options:
+  --follow, -f       Follow log output (like tail -f)
+  --poll <name>      Filter by poll config ID
+  --lines, -n <num>  Number of lines to show (default: 50)
+  --help             Show this help
+
+Examples:
+  ocdc poll logs                     # View recent logs
+  ocdc poll logs --follow            # Follow logs in real-time
+  ocdc poll logs --poll github-issues  # Filter by poll config
+EOF
+        return 0
+        ;;
+      *)
+        log_error "Unknown option: $1"
+        return 1
+        ;;
+    esac
+  done
+  
+  if [[ ! -f "$OCDC_POLL_LOG_FILE" ]]; then
+    log_warn "No log file found at $OCDC_POLL_LOG_FILE"
+    return 0
+  fi
+  
+  if [[ "$follow" == "true" ]]; then
+    if [[ -n "$poll_filter" ]]; then
+      tail -f "$OCDC_POLL_LOG_FILE" | grep --line-buffered "\\[$poll_filter\\]"
+    else
+      tail -f "$OCDC_POLL_LOG_FILE"
+    fi
+  else
+    if [[ -n "$poll_filter" ]]; then
+      grep "\\[$poll_filter\\]" "$OCDC_POLL_LOG_FILE" | tail -n "$lines"
+    else
+      tail -n "$lines" "$OCDC_POLL_LOG_FILE"
+    fi
+  fi
 }
 
 # Check required dependencies
@@ -83,9 +409,14 @@ sanitize_name() {
 
 show_help() {
   cat << 'EOF'
-Usage: ocdc poll [options]
+Usage: ocdc poll [command] [options]
 
 Poll configured sources and spawn OpenCode sessions for new items.
+
+Commands:
+  sessions            List active poll-created sessions
+  attach <pattern>    Attach to a session by key or name
+  logs [options]      View poll logs
 
 Options:
   --once              Run one poll cycle and exit (default behavior)
@@ -100,6 +431,9 @@ Examples:
   ocdc poll                    # Run all enabled polls once
   ocdc poll --dry-run          # Preview what would happen
   ocdc poll --config github-issues  # Run only github-issues poll
+  ocdc poll sessions           # List active sessions
+  ocdc poll attach issue-42    # Attach to a matching session
+  ocdc poll logs --follow      # Follow poll logs
 EOF
 }
 
@@ -166,6 +500,9 @@ process_poll() {
   local config_id
   config_id=$(poll_config_get "$config_file" ".id")
   
+  # Set current poll ID for structured logging
+  CURRENT_POLL_ID="$config_id"
+  
   log "Processing poll: $config_id"
   
   # Check if enabled
@@ -219,6 +556,15 @@ process_poll() {
   # Get agent (defaults to "plan" for safety in automated sessions)
   local session_agent
   session_agent=$(poll_config_get_with_default "$config_file" ".session.agent" "plan")
+  
+  # Validate agent to prevent command injection from malicious configs
+  case "$session_agent" in
+    plan|code|architect|build|review|pm) ;;  # Known safe agents
+    *)
+      log_warn "Unknown agent '$session_agent', defaulting to 'plan'"
+      session_agent="plan"
+      ;;
+  esac
   
   # Get source type (defaults to "poll" if not specified)
   local source_type
@@ -278,7 +624,8 @@ process_poll() {
       title="$title" \
       branch="$branch")
     # Sanitize session name to prevent command injection and path traversal
-    session_name=$(sanitize_name "$session_name_raw")
+    # Truncate to 200 chars to avoid tmux session name limits
+    session_name=$(sanitize_name "$session_name_raw" | cut -c1-200)
     
     if [[ -z "$session_name" ]]; then
       log_error "    Session name is empty after sanitization"
@@ -334,6 +681,8 @@ process_poll() {
       -e "OCDC_BRANCH=$branch" \
       -e "OCDC_SOURCE_URL=$url" \
       -e "OCDC_SOURCE_TYPE=$source_type" \
+      -e "OCDC_POLL_CONFIG=$config_id" \
+      -e "OCDC_ITEM_KEY=$key" \
       "$opencode_cmd --prompt \"\$(cat '$prompt_file')\"; rm -f '$prompt_file'; echo 'Session complete. Press enter to close...'; read"; then
       log_error "    Failed to create tmux session"
       rm -f "$prompt_file"  # Cleanup prompt file on failure
@@ -345,11 +694,21 @@ process_poll() {
     mark_processed "$key" "$config_id"
   done
   
+  # Clear poll ID after processing
+  CURRENT_POLL_ID=""
+  
   return 0
 }
 
 # Main
 main() {
+  # Check for subcommands first (before option parsing)
+  case "${1:-}" in
+    sessions) shift; poll_sessions_cmd "$@"; exit $? ;;
+    attach)   shift; poll_attach_cmd "$@"; exit $? ;;
+    logs)     shift; poll_logs_cmd "$@"; exit $? ;;
+  esac
+  
   # Parse arguments (check for --help first, before checking dependencies)
   while [[ $# -gt 0 ]]; do
     case "$1" in

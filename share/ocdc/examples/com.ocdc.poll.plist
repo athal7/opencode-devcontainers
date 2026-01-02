@@ -20,11 +20,11 @@
     <key>RunAtLoad</key>
     <true/>
     
-    <!-- Log output -->
+    <!-- Log output (poll also writes to ~/.local/share/ocdc/logs/poll.log) -->
     <key>StandardOutPath</key>
-    <string>/tmp/ocdc-poll.log</string>
+    <string>/Users/YOUR_USERNAME/.local/share/ocdc/logs/poll.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/ocdc-poll.log</string>
+    <string>/Users/YOUR_USERNAME/.local/share/ocdc/logs/poll.log</string>
     
     <!-- Environment variables -->
     <key>EnvironmentVariables</key>
