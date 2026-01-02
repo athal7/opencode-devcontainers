@@ -60,10 +60,10 @@ get_tracked_workspaces() {
   fi
 }
 
-# Get current workspace for highlighting
+# Get current workspace for highlighting (resolve symlinks for consistent comparison)
 CURRENT_WS=""
 if git rev-parse --git-dir >/dev/null 2>&1; then
-  CURRENT_WS=$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)
+  CURRENT_WS=$(ocdc_resolve_path "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")
 fi
 
 if [[ "$JSON_OUTPUT" == "true" ]]; then

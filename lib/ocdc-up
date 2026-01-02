@@ -115,8 +115,8 @@ command -v devcontainer >/dev/null 2>&1 || error "devcontainer CLI not found. In
 # Check we're in a git repo
 git rev-parse --git-dir >/dev/null 2>&1 || error "Not in a git repository"
 
-# Get repo info
-REPO_ROOT=$(git rev-parse --show-toplevel)
+# Get repo info (resolve symlinks for consistent workspace paths)
+REPO_ROOT=$(ocdc_resolve_path "$(git rev-parse --show-toplevel)")
 REPO_NAME=$(basename "$REPO_ROOT")
 REMOTE_URL=$(git remote get-url origin 2>/dev/null || echo "")
 

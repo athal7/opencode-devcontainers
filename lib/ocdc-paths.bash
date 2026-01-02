@@ -36,6 +36,15 @@ ocdc_path_id() {
   echo "$path" | md5 -q 2>/dev/null || echo "$path" | md5sum | cut -d' ' -f1
 }
 
+# Resolve a path to its canonical absolute form, resolving symlinks
+# Returns the original input if the path doesn't exist
+# Note: Only works for directories, not files
+# Usage: resolved=$(ocdc_resolve_path "/some/path")
+ocdc_resolve_path() {
+  local path="$1"
+  (cd "$path" 2>/dev/null && pwd -P) || echo "$path"
+}
+
 # Ensure all required directories exist
 ocdc_ensure_dirs() {
   mkdir -p "$OCDC_CONFIG_DIR"

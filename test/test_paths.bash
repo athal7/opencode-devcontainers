@@ -292,6 +292,122 @@ test_path_id_produces_known_hash() {
   assert_equals "$expected" "$hash"
 }
 
+test_resolve_path_exists() {
+  source "$LIB_DIR/ocdc-paths.bash"
+  
+  # Function should be defined after sourcing
+  if ! type -t ocdc_resolve_path >/dev/null 2>&1; then
+    echo "ocdc_resolve_path function not defined"
+    return 1
+  fi
+  return 0
+}
+
+test_resolve_path_returns_absolute_path() {
+  source "$LIB_DIR/ocdc-paths.bash"
+  
+  mkdir -p "$TEST_DIR/mydir"
+  local result=$(ocdc_resolve_path "$TEST_DIR/mydir")
+  
+  # Result should start with /
+  if [[ "$result" != /* ]]; then
+    echo "Expected absolute path, got: $result"
+    return 1
+  fi
+  return 0
+}
+
+test_resolve_path_resolves_symlinks() {
+  source "$LIB_DIR/ocdc-paths.bash"
+  
+  # Create a real directory and a symlink to it
+  mkdir -p "$TEST_DIR/real-dir"
+  ln -s "$TEST_DIR/real-dir" "$TEST_DIR/symlink-dir"
+  
+  local real_path=$(ocdc_resolve_path "$TEST_DIR/real-dir")
+  local symlink_path=$(ocdc_resolve_path "$TEST_DIR/symlink-dir")
+  
+  # Both should resolve to the same physical path
+  if [[ "$real_path" != "$symlink_path" ]]; then
+    echo "Symlink not resolved: real=$real_path symlink=$symlink_path"
+    return 1
+  fi
+  return 0
+}
+
+test_resolve_path_returns_input_for_nonexistent() {
+  source "$LIB_DIR/ocdc-paths.bash"
+  
+  local nonexistent="/nonexistent/path/that/does/not/exist"
+  local result=$(ocdc_resolve_path "$nonexistent")
+  
+  # Should return the original input if the path doesn't exist
+  assert_equals "$nonexistent" "$result"
+}
+
+test_resolve_path_handles_relative_paths() {
+  source "$LIB_DIR/ocdc-paths.bash"
+  
+  mkdir -p "$TEST_DIR/subdir"
+  cd "$TEST_DIR/subdir"
+  
+  local result=$(ocdc_resolve_path ".")
+  
+  # Should return an absolute path
+  if [[ "$result" != /* ]]; then
+    echo "Expected absolute path for '.', got: $result"
+    return 1
+  fi
+  
+  # Should contain the subdir name
+  if [[ "$result" != *"subdir"* ]]; then
+    echo "Expected path to contain 'subdir', got: $result"
+    return 1
+  fi
+  return 0
+}
+
+test_resolve_path_resolves_nested_symlinks() {
+  source "$LIB_DIR/ocdc-paths.bash"
+  
+  # Create a real directory and nested symlinks
+  mkdir -p "$TEST_DIR/real-dir"
+  ln -s "$TEST_DIR/real-dir" "$TEST_DIR/link1"
+  ln -s "$TEST_DIR/link1" "$TEST_DIR/link2"
+  
+  local real_path=$(ocdc_resolve_path "$TEST_DIR/real-dir")
+  local link2_path=$(ocdc_resolve_path "$TEST_DIR/link2")
+  
+  # Nested symlinks should resolve to the same physical path
+  if [[ "$real_path" != "$link2_path" ]]; then
+    echo "Nested symlinks not resolved: real=$real_path link2=$link2_path"
+    return 1
+  fi
+  return 0
+}
+
+test_resolve_path_does_not_change_cwd() {
+  source "$LIB_DIR/ocdc-paths.bash"
+  
+  mkdir -p "$TEST_DIR/original-dir"
+  mkdir -p "$TEST_DIR/other-dir"
+  
+  cd "$TEST_DIR/original-dir"
+  local original_cwd=$(pwd)
+  
+  # Call resolve_path on a different directory
+  ocdc_resolve_path "$TEST_DIR/other-dir" >/dev/null
+  
+  local after_cwd=$(pwd)
+  
+  # Current directory should not have changed
+  if [[ "$original_cwd" != "$after_cwd" ]]; then
+    echo "Function changed cwd: before=$original_cwd after=$after_cwd"
+    return 1
+  fi
+  return 0
+}
+
 # =============================================================================
 # Run Tests
 # =============================================================================
@@ -315,7 +431,14 @@ for test_func in \
   test_path_id_returns_consistent_hash \
   test_path_id_returns_32_char_hex \
   test_path_id_different_paths_different_hashes \
-  test_path_id_produces_known_hash
+  test_path_id_produces_known_hash \
+  test_resolve_path_exists \
+  test_resolve_path_returns_absolute_path \
+  test_resolve_path_resolves_symlinks \
+  test_resolve_path_returns_input_for_nonexistent \
+  test_resolve_path_handles_relative_paths \
+  test_resolve_path_resolves_nested_symlinks \
+  test_resolve_path_does_not_change_cwd
 do
   setup
   run_test "${test_func#test_}" "$test_func"
