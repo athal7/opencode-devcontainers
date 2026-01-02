@@ -10,7 +10,7 @@
 #   Enter              Open/start selected instance
 #   n                  New devcontainer (prompts for branch)
 #   d                  Stop selected (with option to remove clone)
-#   D                  Stop all instances
+#   D                  Stop all instances (with option to remove clones)
 #   r                  Refresh list
 #   q                  Quit
 #
@@ -406,6 +406,10 @@ main() {
         tput cnorm
         if confirm "Stop ALL containers?"; then
           ocdc down --all || true
+          echo ""
+          if confirm "Also remove ALL clones?"; then
+            ocdc clean --force || true
+          fi
         fi
         echo ""
         echo "Press any key to continue..."
