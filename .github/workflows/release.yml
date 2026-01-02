@@ -17,6 +17,11 @@ jobs:
         with:
           fetch-depth: 0  # Needed for semantic-release
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -56,6 +61,11 @@ jobs:
         with:
           fetch-depth: 0  # Needed for semantic-release
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
 
       - name: Install dependencies
         run: |
