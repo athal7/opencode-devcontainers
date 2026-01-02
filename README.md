@@ -55,6 +55,7 @@ ocdc exec bash          # Execute in container
 ocdc go feature-x       # Navigate to clone
 ocdc down               # Stop current
 ocdc down --all         # Stop all
+ocdc clean              # Remove orphaned clones
 ```
 
 ## Configuration
