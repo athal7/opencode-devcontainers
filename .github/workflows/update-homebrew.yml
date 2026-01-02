@@ -23,6 +23,6 @@ jobs:
           formula-name: ocdc
           homebrew-tap: athal7/homebrew-tap
           tag-name: ${{ github.event.release.tag_name }}
-          create-pullrequest: false
+          push-to: athal7/homebrew-tap
         env:
           COMMITTER_TOKEN: ${{ steps.app-token.outputs.token }}
