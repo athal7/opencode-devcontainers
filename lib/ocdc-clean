@@ -54,6 +54,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 log() { echo "[ocdc-clean] $*"; }
+error() { echo "[ocdc-clean] ERROR: $*" >&2; exit 1; }
 
 # Get tracked workspaces from ports.json
 get_tracked_workspaces() {
@@ -146,9 +147,9 @@ main() {
     exit 0
   fi
   
-  # Remove orphans
-  local removed=0
-  echo "$orphans" | while read -r clone; do
+  # Remove orphans (use here-string to avoid subshell variable scope issues)
+  while read -r clone; do
+    [[ -n "$clone" ]] || continue
     local repo=$(basename "$(dirname "$clone")")
     local branch=$(basename "$clone")
     
@@ -160,7 +161,7 @@ main() {
     if [[ -d "$parent" ]] && [[ -z "$(ls -A "$parent")" ]]; then
       rmdir "$parent" 2>/dev/null || true
     fi
-  done
+  done <<< "$orphans"
   
   log "Done."
 }
