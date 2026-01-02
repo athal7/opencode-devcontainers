@@ -1210,7 +1210,15 @@ test_build_ocdc_exec_command_preserves_shell_features() {
 # OpenCode provides free models, so no API credentials needed.
 
 # Helper to check if we can run integration tests
+# Integration tests create OpenCode sessions that persist in the session list.
+# They require explicit opt-in via OCDC_INTEGRATION_TESTS=1 to avoid
+# polluting the user's session history during normal test runs.
 can_run_integration_tests() {
+  # Require explicit opt-in (these tests create persistent sessions)
+  if [[ "${OCDC_INTEGRATION_TESTS:-}" != "1" ]]; then
+    return 1
+  fi
+  
   # Check opencode is installed
   if ! command -v opencode &>/dev/null; then
     return 1
@@ -1368,7 +1376,7 @@ extract_opencode_text() {
 
 test_opencode_starts_within_timeout() {
   if ! can_run_integration_tests; then
-    echo "SKIP: opencode integration tests disabled (CI=${CI:-false}, opencode=$(command -v opencode 2>/dev/null || echo 'not found'))"
+    echo "SKIP: Set OCDC_INTEGRATION_TESTS=1 to enable"
     return 0
   fi
   
@@ -1415,7 +1423,7 @@ test_opencode_starts_within_timeout() {
 
 test_opencode_plugin_loads() {
   if ! can_run_integration_tests; then
-    echo "SKIP: opencode integration tests disabled"
+    echo "SKIP: Set OCDC_INTEGRATION_TESTS=1 to enable"
     return 0
   fi
   
@@ -1438,7 +1446,7 @@ test_opencode_plugin_loads() {
 
 test_opencode_ocdc_tool_responds() {
   if ! can_run_integration_tests; then
-    echo "SKIP: opencode integration tests disabled"
+    echo "SKIP: Set OCDC_INTEGRATION_TESTS=1 to enable"
     return 0
   fi
   
@@ -1461,7 +1469,7 @@ test_opencode_ocdc_tool_responds() {
 
 test_opencode_ocdc_set_context_rejects_invalid() {
   if ! can_run_integration_tests; then
-    echo "SKIP: opencode integration tests disabled"
+    echo "SKIP: Set OCDC_INTEGRATION_TESTS=1 to enable"
     return 0
   fi
   
@@ -1484,7 +1492,7 @@ test_opencode_ocdc_set_context_rejects_invalid() {
 
 test_opencode_ocdc_attempts_to_create_workspace() {
   if ! can_run_integration_tests; then
-    echo "SKIP: opencode integration tests disabled"
+    echo "SKIP: Set OCDC_INTEGRATION_TESTS=1 to enable"
     return 0
   fi
   
@@ -1507,7 +1515,7 @@ test_opencode_ocdc_attempts_to_create_workspace() {
 
 test_opencode_ocdc_off_without_session() {
   if ! can_run_integration_tests; then
-    echo "SKIP: opencode integration tests disabled"
+    echo "SKIP: Set OCDC_INTEGRATION_TESTS=1 to enable"
     return 0
   fi
   
@@ -1530,7 +1538,7 @@ test_opencode_ocdc_off_without_session() {
 
 test_opencode_ocdc_exec_requires_context() {
   if ! can_run_integration_tests; then
-    echo "SKIP: opencode integration tests disabled"
+    echo "SKIP: Set OCDC_INTEGRATION_TESTS=1 to enable"
     return 0
   fi
   
@@ -1553,7 +1561,7 @@ test_opencode_ocdc_exec_requires_context() {
 
 test_opencode_slash_command_exists() {
   if ! can_run_integration_tests; then
-    echo "SKIP: opencode integration tests disabled"
+    echo "SKIP: Set OCDC_INTEGRATION_TESTS=1 to enable"
     return 0
   fi
   
@@ -1743,7 +1751,7 @@ echo "Fresh Plugin Installation Test:"
 run_test "fresh_plugin_installation" test_fresh_plugin_installation
 
 echo ""
-echo "OpenCode Runtime Integration Tests (CI=${CI:-false}):"
+echo "OpenCode Runtime Integration Tests (OCDC_INTEGRATION_TESTS=${OCDC_INTEGRATION_TESTS:-unset}):"
 
 for test_func in \
   test_opencode_starts_within_timeout \
