@@ -28,9 +28,18 @@
           "type": "string",
           "description": "Filter by assignee. Use @me for current user. (linear_issue, github_issue)"
         },
+        "author": {
+          "type": "string",
+          "description": "Filter by PR author. Use @me for current user. (github_pr)"
+        },
         "review_requested": {
           "type": "string",
           "description": "Filter by review requested. Use @me for current user. (github_pr)"
+        },
+        "review_decision": {
+          "type": "string",
+          "enum": ["CHANGES_REQUESTED", "APPROVED", "REVIEW_REQUIRED"],
+          "description": "Filter by review decision status. (github_pr)"
         },
         "state": {
           "oneOf": [
@@ -51,11 +60,20 @@
         },
         "repo": {
           "type": "string",
-          "description": "Limit to specific repository (owner/repo format)"
+          "description": "Limit to specific repository (owner/repo format). Mutually exclusive with repos."
+        },
+        "repos": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Limit to multiple repositories (owner/repo format). Mutually exclusive with repo. (github_issue, github_pr)"
         },
         "org": {
           "type": "string",
           "description": "Limit to specific organization"
+        },
+        "team": {
+          "type": "string",
+          "description": "Filter by Linear team key. (linear_issue)"
         }
       }
     },
