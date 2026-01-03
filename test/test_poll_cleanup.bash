@@ -361,6 +361,152 @@ test_cleanup_should_trigger_for_reason() {
 }
 
 # =============================================================================
+# Tests: Cleanup execution
+# =============================================================================
+
+# Helper: Create a mock tmux session for cleanup testing
+create_cleanup_test_session() {
+  local session_name="$1"
+  local poll_config="${2:-test-poll}"
+  local item_key="${3:-test/repo-pr-42}"
+  local workspace="${4:-/tmp/test-workspace}"
+  local source_url="${5:-https://github.com/test/repo/pull/42}"
+  local source_type="${6:-github_pr}"
+  
+  tmux new-session -d -s "$session_name" -c "/tmp" \
+    -e "OCDC_POLL_CONFIG=$poll_config" \
+    -e "OCDC_ITEM_KEY=$item_key" \
+    -e "OCDC_WORKSPACE=$workspace" \
+    -e "OCDC_BRANCH=test-branch" \
+    -e "OCDC_SOURCE_URL=$source_url" \
+    -e "OCDC_SOURCE_TYPE=$source_type" \
+    "sleep 3600" 2>/dev/null || true
+}
+
+# Helper: Clean up test sessions
+cleanup_test_sessions() {
+  for session in $(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^test-cleanup-' || true); do
+    tmux kill-session -t "$session" 2>/dev/null || true
+  done
+}
+
+test_cleanup_execute_kill_session() {
+  cleanup_test_sessions
+  
+  # Create a test session
+  local session_name="test-cleanup-session-1"
+  create_cleanup_test_session "$session_name"
+  
+  # Verify session exists
+  if ! tmux has-session -t "$session_name" 2>/dev/null; then
+    echo "Failed to create test session"
+    return 1
+  fi
+  
+  # Execute kill_session action
+  cleanup_execute_action "kill_session" "$session_name" "/tmp/nonexistent"
+  
+  # Verify session is gone
+  if tmux has-session -t "$session_name" 2>/dev/null; then
+    cleanup_test_sessions
+    echo "Session should have been killed"
+    return 1
+  fi
+  
+  cleanup_test_sessions
+  return 0
+}
+
+test_cleanup_execute_all_actions() {
+  cleanup_test_sessions
+  
+  # Create a test session
+  local session_name="test-cleanup-session-2"
+  local workspace="$TEST_CLONES_DIR/test-repo/test-branch"
+  mkdir -p "$workspace"
+  
+  create_cleanup_test_session "$session_name" "test-poll" "test/repo-pr-42" "$workspace"
+  
+  # Add to queue
+  cleanup_queue_add \
+    "test/repo-pr-42" \
+    "test-poll" \
+    "merged" \
+    "$session_name" \
+    "$workspace" \
+    "https://github.com/test/repo/pull/42" \
+    "github_pr" \
+    "0s"
+  
+  # Execute all cleanup actions
+  local actions='["kill_session", "remove_clone"]'
+  cleanup_execute_all "$session_name" "$workspace" "$actions"
+  
+  # Verify session is gone
+  if tmux has-session -t "$session_name" 2>/dev/null; then
+    cleanup_test_sessions
+    echo "Session should have been killed"
+    return 1
+  fi
+  
+  # Verify workspace is removed (if remove_clone was executed)
+  if [[ -d "$workspace" ]]; then
+    cleanup_test_sessions
+    echo "Workspace should have been removed"
+    return 1
+  fi
+  
+  cleanup_test_sessions
+  return 0
+}
+
+test_cleanup_execute_skips_dirty_workspace() {
+  cleanup_test_sessions
+  
+  # Create a test session with a dirty git workspace
+  local session_name="test-cleanup-session-3"
+  local workspace="$TEST_CLONES_DIR/dirty-repo/test-branch"
+  mkdir -p "$workspace"
+  
+  # Initialize git repo with uncommitted changes
+  (cd "$workspace" && git init && echo "test" > file.txt && git add file.txt && git commit -m "initial" && echo "uncommitted" > file.txt)
+  
+  create_cleanup_test_session "$session_name" "test-poll" "test/dirty-pr-42" "$workspace"
+  
+  # Execute cleanup with remove_clone - should skip due to dirty git
+  local actions='["kill_session", "remove_clone"]'
+  cleanup_execute_all "$session_name" "$workspace" "$actions"
+  
+  # Session should be gone (kill_session always works)
+  if tmux has-session -t "$session_name" 2>/dev/null; then
+    cleanup_test_sessions
+    echo "Session should have been killed"
+    return 1
+  fi
+  
+  # Workspace should still exist (remove_clone skipped due to dirty git)
+  if [[ ! -d "$workspace" ]]; then
+    cleanup_test_sessions
+    echo "Workspace should NOT have been removed (dirty git)"
+    return 1
+  fi
+  
+  # Cleanup
+  rm -rf "$workspace"
+  cleanup_test_sessions
+  return 0
+}
+
+test_cleanup_get_actions_from_config() {
+  local config_json='{"actions": ["kill_session", "stop_container"]}'
+  local actions
+  actions=$(cleanup_get_actions "$config_json" | tr '\n' ' ' | xargs)
+  
+  assert_contains "$actions" "kill_session"
+  assert_contains "$actions" "stop_container"
+}
+
+# =============================================================================
 # Run Tests
 # =============================================================================
 
@@ -428,7 +574,20 @@ echo "Cleanup Config Tests:"
 for test_func in \
   test_cleanup_config_defaults \
   test_cleanup_config_override \
-  test_cleanup_should_trigger_for_reason
+  test_cleanup_should_trigger_for_reason \
+  test_cleanup_get_actions_from_config
+do
+  setup
+  run_test "${test_func#test_}" "$test_func"
+  teardown
+done
+
+echo ""
+echo "Cleanup Execution Tests:"
+for test_func in \
+  test_cleanup_execute_kill_session \
+  test_cleanup_execute_all_actions \
+  test_cleanup_execute_skips_dirty_workspace
 do
   setup
   run_test "${test_func#test_}" "$test_func"

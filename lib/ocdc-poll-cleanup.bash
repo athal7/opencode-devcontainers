@@ -401,3 +401,151 @@ cleanup_get_actions() {
   
   cleanup_get_config_with_defaults "$config_json" | jq -r '.actions[]'
 }
+
+# =============================================================================
+# Cleanup Execution
+# =============================================================================
+
+# Execute a single cleanup action
+# Usage: cleanup_execute_action <action> <tmux_session> <clone_path>
+# Returns: 0 on success, 1 on failure (with warning logged)
+cleanup_execute_action() {
+  local action="$1"
+  local tmux_session="$2"
+  local clone_path="$3"
+  
+  case "$action" in
+    kill_session)
+      _cleanup_action_kill_session "$tmux_session"
+      ;;
+    stop_container)
+      _cleanup_action_stop_container "$clone_path"
+      ;;
+    remove_clone)
+      _cleanup_action_remove_clone "$clone_path"
+      ;;
+    *)
+      echo "[cleanup] Unknown action: $action" >&2
+      return 1
+      ;;
+  esac
+}
+
+# Kill tmux session
+_cleanup_action_kill_session() {
+  local session="$1"
+  
+  if [[ -z "$session" ]]; then
+    return 0
+  fi
+  
+  if tmux has-session -t "$session" 2>/dev/null; then
+    tmux kill-session -t "$session" 2>/dev/null || true
+  fi
+}
+
+# Stop devcontainer
+_cleanup_action_stop_container() {
+  local clone_path="$1"
+  
+  if [[ -z "$clone_path" ]] || [[ ! -d "$clone_path" ]]; then
+    return 0
+  fi
+  
+  # Use ocdc down if available
+  if command -v ocdc >/dev/null 2>&1; then
+    ocdc down "$clone_path" 2>/dev/null || true
+  fi
+}
+
+# Remove clone directory (with safety check)
+_cleanup_action_remove_clone() {
+  local clone_path="$1"
+  
+  if [[ -z "$clone_path" ]] || [[ ! -d "$clone_path" ]]; then
+    return 0
+  fi
+  
+  # Safety check: only remove if in clones directory
+  local clones_dir="${OCDC_CLONES_DIR:-$HOME/.cache/devcontainer-clones}"
+  if [[ "$clone_path" != "$clones_dir"/* ]]; then
+    echo "[cleanup] Refusing to remove clone outside clones directory: $clone_path" >&2
+    return 1
+  fi
+  
+  # Safety check: don't remove if git is dirty
+  if ! ocdc_is_safe_to_remove "$clone_path" 2>/dev/null; then
+    echo "[cleanup] Skipping remove_clone (uncommitted/unpushed changes): $clone_path" >&2
+    return 1
+  fi
+  
+  rm -rf "$clone_path"
+  
+  # Clean up empty parent directories
+  local parent
+  parent=$(dirname "$clone_path")
+  if [[ -d "$parent" ]] && [[ -z "$(ls -A "$parent" 2>/dev/null)" ]]; then
+    rmdir "$parent" 2>/dev/null || true
+  fi
+}
+
+# Execute all cleanup actions for an item
+# Usage: cleanup_execute_all <tmux_session> <clone_path> <actions_json_array>
+cleanup_execute_all() {
+  local tmux_session="$1"
+  local clone_path="$2"
+  local actions_json="$3"
+  
+  # Parse actions array
+  local action
+  while IFS= read -r action; do
+    [[ -z "$action" ]] && continue
+    cleanup_execute_action "$action" "$tmux_session" "$clone_path"
+  done < <(echo "$actions_json" | jq -r '.[]')
+}
+
+# Process all ready items in the cleanup queue
+# Usage: cleanup_process_ready_items
+# Returns: number of items processed
+cleanup_process_ready_items() {
+  local processed=0
+  
+  # Get ready items
+  local item
+  while IFS= read -r item; do
+    [[ -z "$item" ]] && continue
+    
+    local key tmux_session clone_path poll_id
+    key=$(echo "$item" | jq -r '.key')
+    tmux_session=$(echo "$item" | jq -r '.tmux_session')
+    clone_path=$(echo "$item" | jq -r '.clone_path')
+    poll_id=$(echo "$item" | jq -r '.poll_id')
+    
+    echo "[cleanup] Processing cleanup for: $key" >&2
+    
+    # Get actions from the associated poll config (or use defaults)
+    local actions
+    actions='["kill_session", "stop_container"]'  # Default actions
+    
+    # Execute cleanup actions
+    cleanup_execute_all "$tmux_session" "$clone_path" "$actions"
+    
+    # Remove from queue
+    cleanup_queue_remove "$key"
+    
+    # Clear from processed.json state
+    if [[ -f "$OCDC_POLL_STATE_DIR/processed.json" ]]; then
+      local tmp
+      tmp=$(mktemp)
+      if jq --arg key "$key" 'del(.[$key])' "$OCDC_POLL_STATE_DIR/processed.json" > "$tmp" 2>/dev/null; then
+        mv "$tmp" "$OCDC_POLL_STATE_DIR/processed.json"
+      else
+        rm -f "$tmp"
+      fi
+    fi
+    
+    processed=$((processed + 1))
+  done < <(cleanup_queue_get_ready)
+  
+  echo "$processed"
+}
