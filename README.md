@@ -135,9 +135,25 @@ tail -f "$(brew --prefix)/var/log/ocdc-poll.log"
 Poll configs live in `~/.config/ocdc/polls/`. Each config defines:
 - `source_type` - One of: `github_issue`, `github_pr`, `linear_issue`
 - `repo_filters` - Rules for mapping items to local repositories
-- `fetch` - Optional fetch options (assignee, state, labels, etc.)
+- `fetch` - Optional fetch options (see below)
 - `prompt.template` - Template for OpenCode session prompt (optional)
 - `session.name_template` - Template for tmux session name (optional)
+
+**Fetch options by source type:**
+
+| Option | github_issue | github_pr | linear_issue |
+|--------|--------------|-----------|--------------|
+| `assignee` | `@me` | - | `@me` |
+| `author` | - | filter by PR author | - |
+| `review_requested` | - | `@me` | - |
+| `review_decision` | - | CHANGES_REQUESTED, APPROVED, REVIEW_REQUIRED | - |
+| `state` | open/closed | open/closed | array of states |
+| `labels` | array | - | - |
+| `exclude_labels` | - | - | array |
+| `repo` | owner/repo | owner/repo | - |
+| `repos` | array of repos | array of repos | - |
+| `org` | organization | organization | - |
+| `team` | - | - | team key |
 
 **Available template variables**: `{key}`, `{repo}`, `{repo_short}`, `{number}`, `{title}`, `{body}`, `{url}`, `{branch}`
 

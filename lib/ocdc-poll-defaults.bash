@@ -61,7 +61,7 @@ EOF
   "title": ".title",
   "body": ".body // \"\"",
   "url": ".html_url",
-  "branch": ".headRefName"
+  "branch": ".headRefName // \"pr-\\(.number)\""
 }
 EOF
       ;;
@@ -166,7 +166,8 @@ poll_config_get_default_fetch_options() {
 {
   "assignee": "@me",
   "state": ["started", "unstarted"],
-  "exclude_labels": []
+  "exclude_labels": [],
+  "team": null
 }
 EOF
       ;;
@@ -177,6 +178,7 @@ EOF
   "state": "open",
   "labels": [],
   "repo": null,
+  "repos": null,
   "org": null
 }
 EOF
@@ -185,8 +187,11 @@ EOF
       cat << 'EOF'
 {
   "review_requested": "@me",
+  "author": null,
+  "review_decision": null,
   "state": "open",
   "repo": null,
+  "repos": null,
   "org": null
 }
 EOF
