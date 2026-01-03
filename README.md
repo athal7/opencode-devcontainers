@@ -151,6 +151,23 @@ Run a single poll cycle without setting up the service:
 ocdc poll --once
 ```
 
+### Error Handling
+
+The poll system handles errors gracefully with automatic retries:
+
+| Error Type | Behavior | Retries |
+|------------|----------|---------|
+| Rate limited | Exponential backoff | Yes, next cycle |
+| Auth failed | Skip source | No (permanent) |
+| Network timeout | Skip this cycle | Yes, next cycle |
+| Repo not found | Skip item | No (permanent) |
+| Clone failed | Mark error | Yes, up to 3 attempts |
+| Devcontainer failed | Mark error | Yes, up to 3 attempts |
+
+**Backoff strategy**: 1m → 2m → 4m → 8m... (max 1 hour) with 20% jitter
+
+Error state is tracked in `~/.cache/ocdc/poll/processed.json`. Items that fail 3 times will not be retried until manually cleared.
+
 ## License
 
 MIT

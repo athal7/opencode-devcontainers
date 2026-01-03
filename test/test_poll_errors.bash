@@ -126,6 +126,26 @@ test_error_is_retryable_devcontainer_failed() {
   return 0
 }
 
+test_error_is_retryable_unknown() {
+  source "$LIB_DIR/ocdc-poll-errors.bash"
+  
+  # Unknown error types should NOT be retryable (fail safe)
+  if poll_error_is_retryable "unknown_error_type"; then
+    echo "Unknown errors should NOT be retryable"
+    return 1
+  fi
+  return 0
+}
+
+test_max_attempts_unknown() {
+  source "$LIB_DIR/ocdc-poll-errors.bash"
+  
+  local max
+  max=$(poll_error_max_attempts "unknown_error_type")
+  # Unknown errors return 0 (no retries)
+  assert_equals "0" "$max"
+}
+
 # =============================================================================
 # Max Attempts Tests
 # =============================================================================
@@ -536,9 +556,11 @@ for test_func in \
   test_error_is_retryable_repo_not_found \
   test_error_is_retryable_clone_failed \
   test_error_is_retryable_devcontainer_failed \
+  test_error_is_retryable_unknown \
   test_max_attempts_rate_limited \
   test_max_attempts_clone_failed \
   test_max_attempts_devcontainer_failed \
+  test_max_attempts_unknown \
   test_backoff_first_attempt \
   test_backoff_second_attempt \
   test_backoff_third_attempt \

@@ -94,12 +94,12 @@ _log_to_file() {
 
 log() {
   echo -e "${BLUE}[poll]${NC} $*" >&2
-  _log_to_file "$*"
+  _log_to_file "INFO: $*"
 }
 
 log_success() {
   echo -e "${GREEN}[poll]${NC} $*" >&2
-  _log_to_file "$*"
+  _log_to_file "INFO: $*"
 }
 
 log_warn() {
