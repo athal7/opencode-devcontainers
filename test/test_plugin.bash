@@ -1198,6 +1198,67 @@ test_build_ocdc_exec_command_preserves_shell_features() {
 }
 
 # =============================================================================
+# Async Execution Tests
+# =============================================================================
+# These tests verify that the plugin uses async execution to prevent UI blocking.
+# The plugin must use execFileAsync (promisified execFile) instead of execFileSync
+# for long-running operations like ocdc up and ocdc exec.
+
+test_plugin_uses_async_exec() {
+  # The plugin should define execFileAsync using promisify
+  if ! grep -q "const execFileAsync = promisify(execFile)" "$PLUGIN_DIR/index.js"; then
+    echo "execFileAsync should be defined using promisify(execFile)"
+    return 1
+  fi
+  return 0
+}
+
+test_plugin_no_execFileSync_for_ocdc_commands() {
+  # execFileSync should NOT be used anywhere in the plugin
+  # It blocks the event loop and causes UI rendering issues
+  local sync_count
+  sync_count=$(grep -c "execFileSync" "$PLUGIN_DIR/index.js" 2>/dev/null || echo "0")
+  
+  if [[ "$sync_count" -ne 0 ]]; then
+    echo "Expected 0 execFileSync calls, found: $sync_count"
+    echo "Use execFileAsync instead to prevent UI blocking"
+    return 1
+  fi
+  return 0
+}
+
+test_plugin_supports_abort_signal() {
+  # The plugin should pass ctx.abort signal to execFileAsync calls
+  # This allows users to cancel long-running operations
+  if ! grep -q "signal: ctx.abort" "$PLUGIN_DIR/index.js"; then
+    echo "Plugin should pass abort signal (signal: ctx.abort) to execFileAsync"
+    return 1
+  fi
+  return 0
+}
+
+test_plugin_handles_abort_error() {
+  # The plugin should handle AbortError for user cancellation
+  if ! grep -q "AbortError" "$PLUGIN_DIR/index.js"; then
+    echo "Plugin should handle AbortError for cancellation"
+    return 1
+  fi
+  return 0
+}
+
+test_plugin_async_execute_functions() {
+  # All three tools should have async execute functions
+  local async_count
+  async_count=$(grep -c "async execute(args, ctx)" "$PLUGIN_DIR/index.js" 2>/dev/null || echo "0")
+  
+  if [[ "$async_count" -ne 3 ]]; then
+    echo "Expected 3 async execute functions (ocdc_set_context, ocdc_exec, ocdc), found: $async_count"
+    return 1
+  fi
+  return 0
+}
+
+# =============================================================================
 # OpenCode Runtime Integration Tests (skipped in CI)
 # =============================================================================
 # These tests actually invoke `opencode run` to verify the plugin works in the
@@ -1771,6 +1832,21 @@ echo "Plugin Initialization Tests:"
 for test_func in \
   test_plugin_init_does_not_await_slow_operations \
   test_plugin_init_timeout_prevents_hang
+do
+  setup
+  run_test "${test_func#test_}" "$test_func"
+  teardown
+done
+
+echo ""
+echo "Async Execution Tests:"
+
+for test_func in \
+  test_plugin_uses_async_exec \
+  test_plugin_no_execFileSync_for_ocdc_commands \
+  test_plugin_supports_abort_signal \
+  test_plugin_handles_abort_error \
+  test_plugin_async_execute_functions
 do
   setup
   run_test "${test_func#test_}" "$test_func"

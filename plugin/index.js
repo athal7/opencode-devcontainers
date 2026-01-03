@@ -2,7 +2,8 @@ import {
   mkdirSync, existsSync, readdirSync, unlinkSync, copyFileSync 
 } from "fs"
 import { join, dirname } from "path"
-import { execSync, execFileSync } from "child_process"
+import { execSync, execFile } from "child_process"
+import { promisify } from "util"
 import { fileURLToPath } from "url"
 import { tool } from "@opencode-ai/plugin/tool"
 
@@ -19,6 +20,9 @@ import {
   buildOcdcExecArgs,
   buildOcdcExecCommandString,
 } from "./helpers.js"
+
+// Promisified execFile for non-blocking async execution
+const execFileAsync = promisify(execFile)
 
 // Timeout for init operations (2 seconds)
 const INIT_TIMEOUT_MS = 2000
@@ -171,14 +175,17 @@ export const OCDC = async ({ client }) => {
           }
           
           try {
-            // Use execFileSync with array arguments to avoid shell injection
-            const result = execFileSync(
+            // Use async execFile to avoid blocking the event loop
+            const { stdout } = await execFileAsync(
               "ocdc",
               buildOcdcExecArgs(session.workspace, command),
-              { encoding: "utf-8", maxBuffer: 10 * 1024 * 1024 }
+              { encoding: "utf-8", maxBuffer: 10 * 1024 * 1024, signal: ctx.abort }
             )
-            return result
+            return stdout
           } catch (err) {
+            if (err.name === 'AbortError') {
+              return `Command cancelled.`
+            }
             return `Command failed: ${err.message}\n${err.stderr || ""}`
           }
         }
@@ -238,11 +245,12 @@ export const OCDC = async ({ client }) => {
           if (!resolved) {
             // Workspace doesn't exist - try to create it automatically
             try {
-              // Use execFileSync to avoid shell injection from target
-              execFileSync('ocdc', ['up', target], {
+              // Use async execFile to avoid blocking the event loop
+              await execFileAsync('ocdc', ['up', target], {
                 encoding: "utf-8",
                 maxBuffer: 10 * 1024 * 1024,
                 timeout: 300000, // 5 minutes for container setup
+                signal: ctx.abort,
               })
               
               // Re-resolve after creation
@@ -260,6 +268,9 @@ export const OCDC = async ({ client }) => {
               }
               return `Workspace created but could not auto-target.`
             } catch (err) {
+              if (err.name === 'AbortError') {
+                return `Workspace creation cancelled.`
+              }
               // Auto-creation failed - ask for confirmation
               if (!shouldCreate) {
                 return `No devcontainer clone found for '${target}' and automatic creation failed.\n\n` +
@@ -288,11 +299,12 @@ export const OCDC = async ({ client }) => {
           if (!isRunning) {
             // Container exists but not running - try to start it automatically
             try {
-              // Use execFileSync to avoid shell injection from target
-              execFileSync('ocdc', ['up', target], {
+              // Use async execFile to avoid blocking the event loop
+              await execFileAsync('ocdc', ['up', target], {
                 encoding: "utf-8",
                 maxBuffer: 10 * 1024 * 1024,
                 timeout: 300000,
+                signal: ctx.abort,
               })
               
               saveSession(sessionID, { branch, workspace, repoName })
@@ -301,6 +313,9 @@ export const OCDC = async ({ client }) => {
                      `All commands will run inside this container.\n` +
                      `Use \`/ocdc off\` to disable, or prefix with \`HOST:\` to run on host.`
             } catch (err) {
+              if (err.name === 'AbortError') {
+                return `Container start cancelled.`
+              }
               // Auto-start failed - ask for confirmation
               if (!shouldCreate) {
                 return `Devcontainer for '${branch}' exists but is not running and automatic start failed.\n\n` +
