@@ -1,6 +1,6 @@
 {
   "name": "opencode-devcontainers",
-  "version": "4.0.0",
+  "version": "4.0.1",
   "description": "Run multiple devcontainer instances with auto-assigned ports for OpenCode",
   "type": "module",
   "main": "bin/ocdc",
