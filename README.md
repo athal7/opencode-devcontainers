@@ -1,20 +1,14 @@
-```
-      ⚡
-  ___  ___ ___  ___ 
- / _ \/ __/ _ \/ __|
-| (_) | (_| (_) | (__ 
- \___/ \___\___/ \___|
-      ⚡
-   OpenCode DevContainers
-```
+# opencode-devcontainers
 
-Run multiple devcontainer instances simultaneously with auto-assigned ports and branch management.
+Run multiple devcontainer instances simultaneously with auto-assigned ports and branch-based isolation.
+
+> **Version 0.x** - Pre-1.0 software. Minor versions may contain breaking changes.
 
 ## Why?
 
 When working on multiple branches, you need isolated development environments. Git worktrees don't work with devcontainers because the `.git` file points outside the container.
 
-**ocdc** solves this by:
+**opencode-devcontainers** solves this by:
 - Creating shallow clones for each branch (fully self-contained)
 - Auto-assigning ports from a configurable range (13000-13099)
 - Generating ephemeral override configs (your devcontainer.json stays clean)
@@ -22,16 +16,8 @@ When working on multiple branches, you need isolated development environments. G
 
 ## Installation
 
-### Homebrew (Recommended)
-
 ```bash
-brew install athal7/tap/ocdc
-```
-
-### Manual Installation
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/athal7/ocdc/main/install.sh | bash
+brew install athal7/tap/opencode-devcontainers
 ```
 
 ### Dependencies
@@ -40,6 +26,26 @@ curl -fsSL https://raw.githubusercontent.com/athal7/ocdc/main/install.sh | bash
 - `devcontainer` CLI - Install with: `npm install -g @devcontainers/cli`
 
 ## Usage
+
+### OpenCode Plugin (Recommended)
+
+In OpenCode, use the `/devcontainer` slash command:
+
+```
+/devcontainer feature-x    # Target a devcontainer for this session
+/devcontainer myapp/main   # Target specific repo/branch
+/devcontainer              # Show current status
+/devcontainer off          # Disable, run commands on host
+```
+
+When a devcontainer is targeted:
+- Most commands run inside the container via `ocdc exec`
+- Git, file reading, and editors run on host
+- Prefix with `HOST:` to force host execution
+
+### CLI Commands
+
+The `ocdc` CLI is primarily used internally by the plugin, but can also be used directly:
 
 ```bash
 ocdc up                 # Start devcontainer (port 13000)
@@ -71,7 +77,7 @@ ocdc list --json
 # [{"workspace": "...", "port": 13001, "repo": "...", "branch": "...", "status": "up"}]
 ```
 
-Exit codes are standardized: 0=success, 1=error, 2=invalid args, 3=not found.
+Exit codes: 0=success, 1=error, 2=invalid args, 3=not found.
 
 See [docs/CLI-INTERFACE.md](docs/CLI-INTERFACE.md) for full API documentation.
 
@@ -91,26 +97,9 @@ See [docs/CLI-INTERFACE.md](docs/CLI-INTERFACE.md) for full API documentation.
 2. **Ports**: Ephemeral override with unique port, passed via `--override-config`.
 3. **Tracking**: `~/.cache/ocdc/ports.json`
 
-## OpenCode Plugin
+## Related
 
-ocdc includes an OpenCode plugin for targeting devcontainers from within OpenCode sessions:
-
-```bash
-# Install the plugin
-ocdc plugin install
-```
-
-Then in OpenCode:
-```
-/ocdc feature-x    # Target a devcontainer for this session
-/ocdc              # Show current status
-/ocdc off          # Disable, run commands on host
-```
-
-When a devcontainer is targeted:
-- Most commands run inside the container via `ocdc exec`
-- Git, file reading, and editors run on host
-- Prefix with `HOST:` to force host execution
+- [opencode-pilot](https://github.com/athal7/opencode-pilot) - Automation layer for OpenCode (notifications, mobile UI, polling)
 
 ## License
 
