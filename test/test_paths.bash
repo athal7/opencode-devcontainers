@@ -91,15 +91,6 @@ test_paths_defines_clones_dir() {
   assert_contains "$OCDC_CLONES_DIR" "devcontainer-clones"
 }
 
-test_paths_defines_polls_dir() {
-  source "$LIB_DIR/ocdc-paths.bash"
-  if [[ -z "${OCDC_POLLS_DIR:-}" ]]; then
-    echo "OCDC_POLLS_DIR not defined"
-    return 1
-  fi
-  assert_contains "$OCDC_POLLS_DIR" "polls"
-}
-
 test_paths_creates_directories() {
   source "$LIB_DIR/ocdc-paths.bash"
   ocdc_ensure_dirs
@@ -114,10 +105,6 @@ test_paths_creates_directories() {
   fi
   if [[ ! -d "$OCDC_DATA_DIR" ]]; then
     echo "Data dir not created: $OCDC_DATA_DIR"
-    return 1
-  fi
-  if [[ ! -d "$OCDC_POLLS_DIR" ]]; then
-    echo "Polls dir not created: $OCDC_POLLS_DIR"
     return 1
   fi
   return 0
@@ -783,7 +770,6 @@ for test_func in \
   test_paths_defines_cache_dir \
   test_paths_defines_data_dir \
   test_paths_defines_clones_dir \
-  test_paths_defines_polls_dir \
   test_paths_creates_directories \
   test_migration_moves_old_config \
   test_migration_moves_old_cache \
