@@ -1,12 +1,9 @@
 {
   "name": "opencode-devcontainers",
   "version": "4.0.1",
-  "description": "Run multiple devcontainer instances with auto-assigned ports for OpenCode",
+  "description": "OpenCode plugin for running devcontainers with auto-assigned ports",
   "type": "module",
-  "main": "bin/ocdc",
-  "bin": {
-    "ocdc": "./bin/ocdc"
-  },
+  "main": "plugin/index.js",
   "repository": {
     "type": "git",
     "url": "https://github.com/athal7/opencode-devcontainers.git"
@@ -16,7 +13,8 @@
     "docker",
     "development",
     "branches",
-    "opencode"
+    "opencode",
+    "plugin"
   ],
   "author": "Andrew Thal <467872+athal7@users.noreply.github.com>",
   "license": "MIT",
@@ -24,12 +22,9 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "./test/run_tests.bash",
-    "semantic-release": "semantic-release",
-    "postinstall": "echo 'opencode-devcontainers installed! Run \"ocdc --help\" to get started.'"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0"
+    "test": "node --test test/unit/*.test.js",
+    "test:watch": "node --test --watch test/unit/*.test.js",
+    "semantic-release": "semantic-release"
   },
   "devDependencies": {
     "@semantic-release/exec": "^6.0.3",
