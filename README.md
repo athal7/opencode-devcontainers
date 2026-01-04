@@ -184,6 +184,20 @@ Run a single poll cycle without setting up the service:
 ocdc poll --once
 ```
 
+### Parallel Processing
+
+By default, items are processed sequentially. Use `--max-concurrent` to process multiple items in parallel, significantly speeding up session creation when you have many pending items:
+
+```bash
+# Process up to 3 items simultaneously
+ocdc poll --max-concurrent 3
+
+# Preview what would be processed
+ocdc poll --dry-run --max-concurrent 3
+```
+
+**Note**: Each devcontainer creation runs `docker build` which can be resource-intensive. Start with 2-3 concurrent jobs and increase if your system handles it well.
+
 ### Error Handling
 
 The poll system handles errors gracefully with automatic retries:
