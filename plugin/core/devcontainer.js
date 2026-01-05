@@ -112,7 +112,8 @@ export function buildExecArgs(workspace, command, options = {}) {
     args.push('--override-config', options.overridePath)
   }
 
-  args.push('--', command)
+  // Use sh -c to properly handle commands with arguments, pipes, and redirects
+  args.push('--', 'sh', '-c', command)
 
   return args
 }

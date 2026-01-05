@@ -51,24 +51,41 @@ describe('buildUpArgs', () => {
 })
 
 describe('buildExecArgs', () => {
-  test('builds basic exec args', () => {
-    const args = buildExecArgs('/workspace', 'npm test')
+  test('wraps command with sh -c for proper argument handling', () => {
+    const args = buildExecArgs('/workspace', 'git status')
     
     assert.ok(args.includes('--workspace-folder'))
     assert.ok(args.includes('/workspace'))
     assert.ok(args.includes('--'))
     
-    // Command comes after --
+    // Command should be wrapped with sh -c to handle arguments properly
     const dashIndex = args.indexOf('--')
     assert.ok(dashIndex > 0)
-    assert.strictEqual(args[dashIndex + 1], 'npm test')
+    assert.strictEqual(args[dashIndex + 1], 'sh')
+    assert.strictEqual(args[dashIndex + 2], '-c')
+    assert.strictEqual(args[dashIndex + 3], 'git status')
+  })
+
+  test('handles complex shell expressions', () => {
+    const args = buildExecArgs('/workspace', 'echo "hello world" | grep hello')
+    
+    const dashIndex = args.indexOf('--')
+    assert.strictEqual(args[dashIndex + 1], 'sh')
+    assert.strictEqual(args[dashIndex + 2], '-c')
+    assert.strictEqual(args[dashIndex + 3], 'echo "hello world" | grep hello')
   })
 
   test('includes override-config when provided', () => {
-    const args = buildExecArgs('/workspace', 'cmd', { overridePath: '/override.json' })
+    const args = buildExecArgs('/workspace', 'npm test', { overridePath: '/override.json' })
     
     assert.ok(args.includes('--override-config'))
     assert.ok(args.includes('/override.json'))
+    
+    // Command should still be wrapped with sh -c
+    const dashIndex = args.indexOf('--')
+    assert.strictEqual(args[dashIndex + 1], 'sh')
+    assert.strictEqual(args[dashIndex + 2], '-c')
+    assert.strictEqual(args[dashIndex + 3], 'npm test')
   })
 })
 
