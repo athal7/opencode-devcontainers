@@ -19,6 +19,7 @@ import {
   buildUpArgs,
   buildExecArgs,
   up,
+  upBackground,
   exec,
   list,
   down,
@@ -26,6 +27,7 @@ import {
   checkDevcontainerCli
 } from '../../plugin/core/devcontainer.js'
 import { PATHS } from '../../plugin/core/paths.js'
+import { readJobs, JOB_STATUS } from '../../plugin/core/jobs.js'
 
 describe('buildUpArgs', () => {
   test('includes workspace-folder and override-config', () => {
@@ -284,6 +286,105 @@ describe('runCommand abort signal', () => {
     assert.strictEqual(result.success, true)
     assert.strictEqual(result.stdout, 'hello')
     assert.strictEqual(result.exitCode, 0)
+  })
+})
+
+describe('upBackground', () => {
+  const testDir = join(homedir(), '.cache/ocdc-test-upbg-' + Date.now())
+  const workspaceDir = join(testDir, 'workspace')
+
+  beforeEach(() => {
+    process.env.OCDC_CACHE_DIR = testDir
+    process.env.OCDC_CONFIG_DIR = join(testDir, 'config')
+    process.env.OCDC_CLONES_DIR = join(testDir, 'clones')
+    
+    mkdirSync(join(testDir, 'config'), { recursive: true })
+    mkdirSync(join(testDir, 'overrides'), { recursive: true })
+    mkdirSync(join(workspaceDir, '.devcontainer'), { recursive: true })
+    
+    writeFileSync(join(testDir, 'ports.json'), '{}')
+    writeFileSync(join(testDir, 'jobs.json'), '{}')
+    writeFileSync(join(testDir, 'config', 'config.json'), JSON.stringify({
+      portRangeStart: 19000,
+      portRangeEnd: 19010,
+    }))
+    writeFileSync(
+      join(workspaceDir, '.devcontainer', 'devcontainer.json'),
+      JSON.stringify({ name: 'test', forwardPorts: [3000] })
+    )
+    
+    // Create git repo for workspace
+    execSync('git init -b main', { cwd: workspaceDir })
+    writeFileSync(join(workspaceDir, 'README.md'), '# Test')
+    execSync('git add .', { cwd: workspaceDir })
+    execSync('git commit -m "Initial"', { cwd: workspaceDir })
+  })
+
+  afterEach(() => {
+    delete process.env.OCDC_CACHE_DIR
+    delete process.env.OCDC_CONFIG_DIR
+    delete process.env.OCDC_CLONES_DIR
+    rmSync(testDir, { recursive: true, force: true })
+  })
+
+  test('returns immediately without blocking', async () => {
+    const startTime = Date.now()
+    
+    const result = await upBackground(workspaceDir)
+    
+    const elapsed = Date.now() - startTime
+    // Should return in under 500ms (not waiting for container)
+    assert.ok(elapsed < 500, `upBackground should return quickly, took ${elapsed}ms`)
+    
+    // Should return job info
+    assert.ok(result.workspace)
+    assert.ok(result.branch)
+    assert.ok(result.repo)
+  })
+
+  test('creates job with pending status', async () => {
+    const result = await upBackground(workspaceDir)
+    
+    const jobs = await readJobs()
+    const job = jobs[result.workspace]
+    
+    assert.ok(job, 'Job should be created')
+    assert.strictEqual(job.status, JOB_STATUS.PENDING)
+    assert.strictEqual(job.branch, 'main')
+  })
+
+  test('returns workspace path and branch info', async () => {
+    const result = await upBackground(workspaceDir)
+    
+    assert.strictEqual(result.workspace, workspaceDir)
+    assert.strictEqual(result.branch, 'main')
+    assert.strictEqual(result.repo, basename(workspaceDir))
+  })
+
+  test('validates devcontainer.json exists', async () => {
+    // Remove devcontainer.json
+    rmSync(join(workspaceDir, '.devcontainer'), { recursive: true, force: true })
+    
+    await assert.rejects(
+      () => upBackground(workspaceDir),
+      /No devcontainer.json found/
+    )
+  })
+
+  test('validates git repository', async () => {
+    // Create a directory without git
+    const noGitDir = join(testDir, 'no-git')
+    mkdirSync(join(noGitDir, '.devcontainer'), { recursive: true })
+    writeFileSync(
+      join(noGitDir, '.devcontainer', 'devcontainer.json'),
+      JSON.stringify({ name: 'test' })
+    )
+    
+    // upBackground with a branch name (not workspace path) needs git
+    await assert.rejects(
+      () => upBackground('some-branch', { cwd: noGitDir }),
+      /Not in a git repository/
+    )
   })
 })
 

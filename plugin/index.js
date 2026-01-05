@@ -19,10 +19,14 @@ import {
 // Import from new core modules
 import {
   up,
+  upBackground,
   exec,
   isContainerRunning,
   checkDevcontainerCli,
   getOverridePath,
+  getJob,
+  cleanupJobs,
+  JOB_STATUS,
   PATHS,
 } from "./core/index.js"
 
@@ -108,6 +112,9 @@ export const devcontainers = async ({ client }) => {
   // Cleanup stale sessions (don't block on slow API)
   runWithTimeout(() => cleanupStaleSessions(client), INIT_TIMEOUT_MS)
   
+  // Cleanup old jobs (don't block)
+  runWithTimeout(() => cleanupJobs(), INIT_TIMEOUT_MS)
+  
   return {
     tool: {
       // Execute command in devcontainer
@@ -123,6 +130,28 @@ export const devcontainers = async ({ client }) => {
           const session = loadSession(sessionID)
           if (!session?.workspace) {
             return "Error: No devcontainer context set for this session. Use `/devcontainer <branch>` first."
+          }
+          
+          // Check if container is still starting
+          if (session.starting) {
+            const job = await getJob(session.workspace)
+            if (job) {
+              if (job.status === JOB_STATUS.PENDING || job.status === JOB_STATUS.RUNNING) {
+                return `Container is still starting for ${session.repoName}/${session.branch}.\n\n` +
+                       `Please wait and try again, or use \`/devcontainer\` to check status.`
+              }
+              if (job.status === JOB_STATUS.FAILED) {
+                return `Container failed to start: ${job.error}\n\n` +
+                       `Use \`/devcontainer ${session.branch}\` to retry.`
+              }
+              if (job.status === JOB_STATUS.COMPLETED) {
+                // Container is ready - update session to remove starting flag
+                saveSession(sessionID, {
+                  ...session,
+                  starting: false,
+                })
+              }
+            }
           }
           
           try {
@@ -172,6 +201,46 @@ export const devcontainers = async ({ client }) => {
               return "No devcontainer active for this session.\n\n" +
                      "Use `/devcontainer <branch>` to target a devcontainer."
             }
+            
+            // Check for background job status
+            if (session.starting) {
+              const job = await getJob(session.workspace)
+              if (job) {
+                if (job.status === JOB_STATUS.PENDING) {
+                  return `Current devcontainer: ${session.repoName}/${session.branch}\n` +
+                         `Workspace: ${session.workspace}\n` +
+                         `Status: Starting (pending)...\n\n` +
+                         `Container start is queued. Please wait.`
+                }
+                if (job.status === JOB_STATUS.RUNNING) {
+                  return `Current devcontainer: ${session.repoName}/${session.branch}\n` +
+                         `Workspace: ${session.workspace}\n` +
+                         `Status: Starting (in progress)...\n\n` +
+                         `Container is being built/started. This may take a few minutes.`
+                }
+                if (job.status === JOB_STATUS.FAILED) {
+                  return `Current devcontainer: ${session.repoName}/${session.branch}\n` +
+                         `Workspace: ${session.workspace}\n` +
+                         `Status: Failed to start\n\n` +
+                         `Error: ${job.error}\n\n` +
+                         `Use \`/devcontainer ${session.branch}\` to retry.`
+                }
+                if (job.status === JOB_STATUS.COMPLETED) {
+                  // Update session to remove starting flag
+                  saveSession(sessionID, {
+                    ...session,
+                    starting: false,
+                  })
+                  return `Current devcontainer: ${session.repoName}/${session.branch}\n` +
+                         `Workspace: ${session.workspace}\n` +
+                         `Port: ${job.port}\n` +
+                         `Status: Running\n\n` +
+                         `Container is ready! All commands will run inside this container.\n` +
+                         `Use \`/devcontainer off\` to disable.`
+                }
+              }
+            }
+            
             const running = await isContainerRunning(session.workspace)
             return `Current devcontainer: ${session.repoName}/${session.branch}\n` +
                    `Workspace: ${session.workspace}\n` +
@@ -193,37 +262,32 @@ export const devcontainers = async ({ client }) => {
           const resolved = resolveWorkspace(target)
           
           if (!resolved) {
-            // Workspace doesn't exist - try to create it using core up()
+            // Workspace doesn't exist - start it in background (non-blocking)
             try {
-              const result = await up(target, {
-                noOpen: true,
+              const result = await upBackground(target, {
                 cwd: process.cwd(),
-                signal,
               })
               
               saveSession(sessionID, {
                 branch: result.branch,
                 workspace: result.workspace,
                 repoName: result.repo,
+                starting: true,  // Mark as starting
               })
               
-              return `Workspace created and session now targeting: ${result.repo}/${result.branch}\n` +
-                     `Workspace: ${result.workspace}\n` +
-                     `Port: ${result.port}\n\n` +
-                     `All commands will run inside this container.\n` +
-                     `Use \`/devcontainer off\` to disable, or prefix with \`HOST:\` to run on host.`
+              return `Starting container for ${result.repo}/${result.branch}...\n` +
+                     `Workspace: ${result.workspace}\n\n` +
+                     `Container is being created in the background. This may take a few minutes.\n` +
+                     `Use \`/devcontainer\` to check status.\n\n` +
+                     `Session is now targeting this container. Commands will work once it's ready.`
             } catch (err) {
-              if (err.name === 'AbortError') {
-                return `Workspace creation cancelled.`
-              }
-              // Auto-creation failed - ask for confirmation
+              // Quick validation failed (e.g., not in git repo, no devcontainer.json)
               if (!shouldCreate) {
-                return `No devcontainer clone found for '${target}' and automatic creation failed.\n\n` +
+                return `Cannot create devcontainer for '${target}'.\n\n` +
                        `Error: ${err.message}\n\n` +
-                       `Would you like me to try creating it again? Call this tool again with create='true' to confirm.`
+                       `Make sure you're in a git repository with a devcontainer.json file.`
               }
               
-              // User explicitly asked for creation and it still failed
               return `Failed to create workspace: ${err.message}`
             }
           }
@@ -241,30 +305,24 @@ export const devcontainers = async ({ client }) => {
           // Check if container is running
           const isRunning = await isContainerRunning(workspace)
           if (!isRunning) {
-            // Container exists but not running - try to start it using core up()
+            // Container exists but not running - start it in background (non-blocking)
             try {
-              const result = await up(workspace, { noOpen: true, signal })
+              await upBackground(workspace)
               
-              saveSession(sessionID, { branch, workspace, repoName })
+              saveSession(sessionID, { 
+                branch, 
+                workspace, 
+                repoName,
+                starting: true,  // Mark as starting
+              })
               
-              return `Container started and session now targeting: ${repoName}/${branch}\n` +
-                     `Workspace: ${workspace}\n` +
-                     `Port: ${result.port}\n\n` +
-                     `All commands will run inside this container.\n` +
-                     `Use \`/devcontainer off\` to disable, or prefix with \`HOST:\` to run on host.`
+              return `Starting container for ${repoName}/${branch}...\n` +
+                     `Workspace: ${workspace}\n\n` +
+                     `Container is starting in the background. This may take a minute.\n` +
+                     `Use \`/devcontainer\` to check status.\n\n` +
+                     `Session is now targeting this container. Commands will work once it's ready.`
             } catch (err) {
-              if (err.name === 'AbortError') {
-                return `Container start cancelled.`
-              }
-              // Auto-start failed - ask for confirmation
-              if (!shouldCreate) {
-                return `Devcontainer for '${branch}' exists but is not running and automatic start failed.\n\n` +
-                       `Error: ${err.message}\n\n` +
-                       `Workspace: ${workspace}\n\n` +
-                       `Would you like me to try starting it again? Call this tool again with create='true' to confirm.`
-              }
-              
-              // User explicitly asked for start and it still failed
+              // Quick validation failed
               return `Failed to start container: ${err.message}`
             }
           }
@@ -305,6 +363,20 @@ export const devcontainers = async ({ client }) => {
       
       // Check if command should run on host
       if (hostCheck) return
+      
+      // Check if container is still starting - provide helpful error instead of cryptic failure
+      if (session.starting) {
+        const job = await getJob(session.workspace)
+        if (job && (job.status === JOB_STATUS.PENDING || job.status === JOB_STATUS.RUNNING)) {
+          // Rewrite to echo a helpful message instead of failing
+          output.args.command = `echo "Container is still starting for ${session.repoName}/${session.branch}. Please wait and try again, or use /devcontainer to check status." && exit 1`
+          return
+        }
+        if (job && job.status === JOB_STATUS.COMPLETED) {
+          // Container is ready - update session (fire-and-forget)
+          saveSession(input.sessionID, { ...session, starting: false })
+        }
+      }
       
       // Wrap with devcontainer exec (using safe command builder to prevent shell injection)
       output.args.command = buildDevcontainerExecCommand(session.workspace, cmd)

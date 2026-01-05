@@ -71,15 +71,25 @@ export const HOST_COMMANDS = [
 
 // ============ Session Management ============
 
+// In-memory cache to avoid repeated file reads on every bash command
+const sessionCache = new Map()
+
 function getSessionFile(sessionID) {
   return join(getSessionsDir(), `${sessionID}.json`)
 }
 
 export function loadSession(sessionID) {
+  // Check cache first
+  if (sessionCache.has(sessionID)) {
+    return sessionCache.get(sessionID)
+  }
+  
   const file = getSessionFile(sessionID)
   if (!existsSync(file)) return null
   try {
-    return JSON.parse(readFileSync(file, "utf-8"))
+    const session = JSON.parse(readFileSync(file, "utf-8"))
+    sessionCache.set(sessionID, session)
+    return session
   } catch {
     return null
   }
@@ -88,10 +98,13 @@ export function loadSession(sessionID) {
 export function saveSession(sessionID, state) {
   const sessionsDir = getSessionsDir()
   mkdirSync(sessionsDir, { recursive: true })
-  writeFileSync(getSessionFile(sessionID), JSON.stringify({
+  const session = {
     ...state,
     activatedAt: new Date().toISOString()
-  }, null, 2))
+  }
+  writeFileSync(getSessionFile(sessionID), JSON.stringify(session, null, 2))
+  // Update cache
+  sessionCache.set(sessionID, session)
 }
 
 export function deleteSession(sessionID) {
@@ -99,6 +112,8 @@ export function deleteSession(sessionID) {
   if (existsSync(file)) {
     unlinkSync(file)
   }
+  // Clear from cache
+  sessionCache.delete(sessionID)
 }
 
 // ============ Workspace Resolution ============

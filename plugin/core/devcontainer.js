@@ -15,6 +15,7 @@ import { allocatePort, releasePort, readPorts, getContainerPort, updatePortAlloc
 import { generateOverrideConfig, getOverridePath } from './config.js'
 import { createClone, getClonePath } from './clones.js'
 import { getCurrentBranch, getRepoRoot } from './git.js'
+import { startJob, updateJob, JOB_STATUS } from './jobs.js'
 import { existsSync } from 'fs'
 
 /**
@@ -246,6 +247,120 @@ export async function up(workspaceOrBranch, options = {}) {
 }
 
 /**
+ * Start a devcontainer in the background (non-blocking)
+ * 
+ * This function returns immediately after validating the workspace and
+ * creating a job entry. The actual container start happens in the background.
+ * 
+ * Use getJob() to check the status of the background operation.
+ * 
+ * @param {string} workspaceOrBranch - Workspace path or branch name
+ * @param {object} [options]
+ * @param {boolean} [options.removeExisting] - Remove existing container
+ * @param {string} [options.cwd] - Working directory (for branch resolution)
+ * @returns {Promise<{workspace: string, repo: string, branch: string}>}
+ */
+export async function upBackground(workspaceOrBranch, options = {}) {
+  await ensureDirs()
+
+  let workspace = workspaceOrBranch
+  let repoName
+  let branch
+
+  // Check if it's a branch name (not an absolute path)
+  if (!workspaceOrBranch.startsWith('/')) {
+    // It's a branch name - need to resolve workspace
+    const cwd = options.cwd || process.cwd()
+    const repoRoot = await getRepoRoot(cwd)
+    
+    if (!repoRoot) {
+      throw new Error('Not in a git repository. Run from a repo directory or specify a workspace path.')
+    }
+
+    // For background start, we do quick validation only
+    // The actual clone will happen in the background job
+    repoName = basename(repoRoot)
+    branch = workspaceOrBranch
+    
+    // Check if clone already exists
+    const clonePath = getClonePath(repoName, branch)
+    if (existsSync(clonePath)) {
+      workspace = clonePath
+    } else {
+      // Clone doesn't exist yet - will be created in background
+      // For now, use the expected path
+      workspace = clonePath
+    }
+  } else {
+    // It's a workspace path
+    workspace = workspaceOrBranch
+    repoName = basename(workspace)
+    branch = await getCurrentBranch(workspace) || 'unknown'
+  }
+
+  // Validate devcontainer.json exists (quick check)
+  // For branch names where workspace doesn't exist yet, skip this check
+  if (existsSync(workspace)) {
+    const devcontainerPath = existsSync(`${workspace}/.devcontainer/devcontainer.json`)
+      ? `${workspace}/.devcontainer/devcontainer.json`
+      : existsSync(`${workspace}/.devcontainer.json`)
+        ? `${workspace}/.devcontainer.json`
+        : null
+
+    if (!devcontainerPath) {
+      throw new Error(`No devcontainer.json found in ${workspace}`)
+    }
+  }
+
+  // Create job entry with pending status
+  await startJob(workspace, repoName, branch)
+
+  // Start the actual up() in the background (fire-and-forget)
+  // The job status will be updated as it progresses
+  runUpInBackground(workspaceOrBranch, workspace, options)
+
+  return {
+    workspace,
+    repo: repoName,
+    branch,
+  }
+}
+
+/**
+ * Run the up() operation in the background, updating job status
+ * This is fire-and-forget - errors are captured in job status
+ * 
+ * @param {string} workspaceOrBranch - Original input (branch or path)
+ * @param {string} workspace - Resolved workspace path
+ * @param {object} options - Options to pass to up()
+ */
+function runUpInBackground(workspaceOrBranch, workspace, options) {
+  // Run async but don't await - this is intentionally fire-and-forget
+  (async () => {
+    try {
+      // Update status to running
+      await updateJob(workspace, JOB_STATUS.RUNNING)
+      
+      // Run the actual up operation
+      const result = await up(workspaceOrBranch, {
+        ...options,
+        noOpen: true,
+      })
+      
+      // Update job to completed with port info
+      await updateJob(workspace, JOB_STATUS.COMPLETED, {
+        port: result.port,
+      })
+    } catch (err) {
+      // Update job to failed with error message
+      await updateJob(workspace, JOB_STATUS.FAILED, {
+        error: err.message,
+      })
+    }
+  })()
+}
+
+/**
  * Execute a command in a devcontainer
  * 
  * @param {string} workspace - Workspace path
@@ -369,6 +484,7 @@ export default {
   buildUpArgs,
   buildExecArgs,
   up,
+  upBackground,
   exec,
   down,
   list,

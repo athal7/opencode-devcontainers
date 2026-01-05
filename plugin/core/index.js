@@ -22,6 +22,7 @@
 // High-level devcontainer operations
 export {
   up,
+  upBackground,
   exec,
   down,
   list,
@@ -30,6 +31,17 @@ export {
   buildUpArgs,
   buildExecArgs,
 } from './devcontainer.js'
+
+// Job tracking for background operations
+export {
+  JOB_STATUS,
+  readJobs,
+  writeJobs,
+  startJob,
+  updateJob,
+  getJob,
+  cleanupJobs,
+} from './jobs.js'
 
 // Clone management
 export {
