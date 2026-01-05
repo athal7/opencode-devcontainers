@@ -56,15 +56,17 @@ export const HOST_COMMANDS = [
   // File editing/searching (opencode uses these)
   'sed', 'awk', 'grep', 'rg', 'ed',
   // Git (always on host - repo is mounted)
-  'git',
+  'git', 'gh',
   // Editors/IDEs
   'code', 'vim', 'nvim', 'nano', 'open', 'cursor',
   // System inspection
   'which', 'type', 'echo', 'env', 'printenv', 'whoami', 'hostname',
-  // devcontainer command (prevent recursion)
-  'devcontainer',
+  // devcontainer/opencode commands (prevent recursion)
+  'devcontainer', 'opencode',
   // Package managers (global installs on host)
   'brew', 'apt', 'apt-get', 'yum', 'dnf',
+  // Docker (runs on host, not inside container)
+  'docker', 'docker-compose',
 ]
 
 // ============ Session Management ============
