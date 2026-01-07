@@ -82,6 +82,18 @@ repos:
 
 This starts an isolated devcontainer for each issue automatically.
 
+## Known Issues
+
+### OpenCode Desktop shows changes from wrong directory
+
+When switching workspaces with `/devcontainer`, OpenCode's internal directory context doesn't update. The "Session changes" panel continues showing diffs from the original directory rather than the targeted devcontainer's clone.
+
+This is an upstream OpenCode limitation - `Instance.directory` is set once at startup and doesn't change mid-session.
+
+**Workaround**: Start OpenCode directly in the target directory, or use separate terminal sessions per workspace.
+
+**Upstream issue**: [anomalyco/opencode#6697](https://github.com/anomalyco/opencode/issues/6697)
+
 ## Related
 
 - [opencode-pilot](https://github.com/athal7/opencode-pilot) - Automation layer for OpenCode (notifications, mobile UI, polling)
