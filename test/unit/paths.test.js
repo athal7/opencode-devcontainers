@@ -33,7 +33,8 @@ describe('PATHS', () => {
     // Getters return default paths when env vars are unset
     assert.strictEqual(PATHS.config, join(homedir(), '.config/opencode/devcontainers'))
     assert.strictEqual(PATHS.cache, join(homedir(), '.cache/opencode-devcontainers'))
-    assert.strictEqual(PATHS.clones, join(homedir(), '.cache/devcontainer-clones'))
+    // Clones live alongside opencode desktop worktrees for discoverability
+    assert.strictEqual(PATHS.clones, join(homedir(), '.local/share/opencode/clone'))
   })
 
   test('respects OCDC_CONFIG_DIR env var', () => {

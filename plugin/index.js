@@ -119,7 +119,7 @@ export const devcontainers = async ({ client }) => {
     tool: {
       // Execute command in devcontainer
       devcontainer_exec: tool({
-        description: "Execute a command in the current devcontainer context. Use this when you need to run commands inside the container.",
+        description: "Execute a command in the current devcontainer context. IMPORTANT: Only use this tool when a devcontainer session is active (set via /devcontainer command). For normal shell commands, use the bash tool instead.",
         args: {
           command: tool.schema.string().describe("Command to execute"),
         },
@@ -349,6 +349,13 @@ export const devcontainers = async ({ client }) => {
       
       const session = loadSession(input.sessionID)
       if (!session?.workspace) return
+      
+      // If workdir is specified and is not within the devcontainer workspace, don't intercept
+      // This handles the case where the user/Claude is working in a different directory
+      const workdir = output.args?.workdir
+      if (workdir && !workdir.startsWith(session.workspace)) {
+        return
+      }
       
       let cmd = output.args?.command?.trim()
       if (!cmd) return
