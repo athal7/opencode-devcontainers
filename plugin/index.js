@@ -361,10 +361,14 @@ export const devcontainers = async ({ client }) => {
           target: tool.schema.string().optional().describe(
             "Branch name (e.g., 'feature-x'), 'off' to disable, or empty for status"
           ),
+          workdir: tool.schema.string().optional().describe(
+            "Working directory (git repository) to create worktree from. Defaults to current directory."
+          ),
         },
         async execute(args, ctx) {
           const { sessionID } = ctx
-          const { target } = args
+          const { target, workdir } = args
+          const cwd = workdir || process.cwd()
           
           // Status request (no target)
           if (!target || target.trim() === "") {
@@ -400,7 +404,6 @@ export const devcontainers = async ({ client }) => {
           }
           
           // Check if we're in a git repo
-          const cwd = process.cwd()
           const repoRoot = await getRepoRoot(cwd)
           
           if (!repoRoot) {
