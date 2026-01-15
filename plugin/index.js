@@ -407,8 +407,9 @@ export const devcontainers = async ({ client }) => {
           const repoRoot = await getRepoRoot(cwd)
           
           if (!repoRoot) {
-            return `Not in a git repository.\n\n` +
-                   `Run this command from within a git repository.`
+            return `Not in a git repository (checked: ${cwd}).\n\n` +
+                   `Please call this tool with the \`workdir\` parameter set to the project directory.\n` +
+                   `Example: worktree(target: "${target}", workdir: "/path/to/your/repo")`
           }
           
           // Check if already in a worktree
