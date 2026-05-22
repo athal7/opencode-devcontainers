@@ -13,6 +13,7 @@ import { join, basename } from 'path'
 import { homedir } from 'os'
 import { mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from 'fs'
 import { execSync } from 'child_process'
+import { createHash } from 'crypto'
 
 // Module under test
 import { 
@@ -24,10 +25,13 @@ import {
   list,
   down,
   isContainerRunning,
-  checkDevcontainerCli
+  checkDevcontainerCli,
+  remove
 } from '../../plugin/core/devcontainer.js'
 import { PATHS } from '../../plugin/core/paths.js'
-import { readJobs, JOB_STATUS } from '../../plugin/core/jobs.js'
+import { readJobs, JOB_STATUS, removeJob } from '../../plugin/core/jobs.js'
+import { getOverridePath } from '../../plugin/core/config.js'
+import { getClonePath } from '../../plugin/core/clones.js'
 
 describe('buildUpArgs', () => {
   test('includes workspace-folder and override-config', () => {
@@ -474,5 +478,160 @@ describe('down', () => {
   test('handles non-existent workspace', async () => {
     // Should not throw
     await down('/workspace/nonexistent')
+  })
+})
+
+describe('remove', () => {
+  const testDir = join(homedir(), '.cache/ocdc-test-remove-' + Date.now())
+  const workspace = join(testDir, 'clones', 'my-repo', 'feature-x')
+  const repo = 'my-repo'
+  const branch = 'feature-x'
+
+  /**
+   * Create a full set of workspace artifacts as if a devcontainer was set up:
+   * ports.json entry, jobs.json entry, override config, clone folder, session files
+   */
+  function createFullWorkspaceState() {
+    mkdirSync(join(testDir, 'config'), { recursive: true })
+    writeFileSync(join(testDir, 'config', 'config.json'), JSON.stringify({
+      portRangeStart: 19000,
+      portRangeEnd: 19010,
+    }))
+
+    mkdirSync(testDir, { recursive: true })
+    writeFileSync(join(testDir, 'ports.json'), JSON.stringify({
+      [workspace]: { port: 19000, repo, branch, started: '2026-01-01T00:00:00Z' },
+    }))
+
+    writeFileSync(join(testDir, 'jobs.json'), JSON.stringify({
+      [workspace]: { workspace, repo, branch, status: JOB_STATUS.COMPLETED, startedAt: '2026-01-01T00:00:00Z' },
+    }))
+
+    const overrideDir = join(testDir, 'overrides')
+    mkdirSync(overrideDir, { recursive: true })
+    const overrideFilename = createHash('md5').update(workspace).digest('hex') + '.json'
+    writeFileSync(join(overrideDir, overrideFilename), JSON.stringify({
+      name: 'test (port 19000)',
+      workspaceFolder: '/workspaces/test',
+    }))
+
+    mkdirSync(join(workspace, '.git'), { recursive: true })
+    writeFileSync(join(workspace, 'README.md'), '# Test')
+
+    const sessionsDir = join(testDir, 'opencode-sessions')
+    mkdirSync(sessionsDir, { recursive: true })
+    writeFileSync(join(sessionsDir, 'test-session.json'), JSON.stringify({
+      branch, workspace, repoName: repo, type: 'devcontainer', activatedAt: '2026-01-01T00:00:00Z',
+    }))
+    writeFileSync(join(sessionsDir, 'other-session.json'), JSON.stringify({
+      branch: 'other', workspace: '/other/workspace', repoName: 'other', type: 'devcontainer',
+    }))
+  }
+
+  beforeEach(() => {
+    process.env.OCDC_CACHE_DIR = testDir
+    process.env.OCDC_CONFIG_DIR = join(testDir, 'config')
+    process.env.OCDC_CLONES_DIR = join(testDir, 'clones')
+  })
+
+  afterEach(() => {
+    delete process.env.OCDC_CACHE_DIR
+    delete process.env.OCDC_CONFIG_DIR
+    delete process.env.OCDC_CLONES_DIR
+    rmSync(testDir, { recursive: true, force: true })
+  })
+
+  test('removes all workspace components when everything exists', async () => {
+    createFullWorkspaceState()
+
+    const summary = await remove(workspace, repo, branch)
+
+    // Docker not available in unit tests — container fields are false
+    assert.strictEqual(summary.containerFound, false)
+    assert.strictEqual(summary.portReleased, true)
+    assert.strictEqual(summary.jobRemoved, true)
+    assert.strictEqual(summary.overrideDeleted, true)
+    assert.strictEqual(summary.cloneDeleted, true)
+    assert.strictEqual(summary.sessionsCleaned, 1)
+
+    // Verify filesystem artifacts are actually gone
+    const ports = JSON.parse(readFileSync(join(testDir, 'ports.json'), 'utf-8'))
+    assert.strictEqual(ports[workspace], undefined, 'port entry removed')
+
+    const jobs = await readJobs()
+    assert.strictEqual(jobs[workspace], undefined, 'job entry removed')
+
+    assert.ok(!existsSync(getOverridePath(workspace)), 'override config deleted')
+    assert.ok(!existsSync(workspace), 'clone folder deleted')
+
+    const sessionFile = join(PATHS.sessions, 'test-session.json')
+    const otherSessionFile = join(PATHS.sessions, 'other-session.json')
+    assert.ok(!existsSync(sessionFile), 'matching session cleaned up')
+    assert.ok(existsSync(otherSessionFile), 'other session preserved')
+  })
+
+  test('handles workspace with missing clone folder', async () => {
+    createFullWorkspaceState()
+    // Remove the clone folder before calling remove
+    rmSync(workspace, { recursive: true, force: true })
+
+    const summary = await remove(workspace, repo, branch)
+
+    assert.strictEqual(summary.cloneDeleted, false, 'clone was already gone')
+    assert.strictEqual(summary.portReleased, true, 'port still released')
+    assert.strictEqual(summary.jobRemoved, true, 'job still removed')
+    assert.strictEqual(summary.overrideDeleted, true, 'override still cleaned')
+    assert.strictEqual(summary.errors.length, 0, 'no errors')
+  })
+
+  test('handles workspace with no port or job entries', async () => {
+    // Only create clone folder and override, no ports/jobs entries
+    mkdirSync(join(testDir, 'overrides'), { recursive: true })
+    const overrideFilename = createHash('md5').update(workspace).digest('hex') + '.json'
+    writeFileSync(join(testDir, 'overrides', overrideFilename), JSON.stringify({ name: 'test' }))
+    mkdirSync(join(workspace, '.git'), { recursive: true })
+    writeFileSync(join(workspace, 'README.md'), '# Test')
+    mkdirSync(testDir, { recursive: true })
+    writeFileSync(join(testDir, 'ports.json'), '{}')
+    writeFileSync(join(testDir, 'jobs.json'), '{}')
+
+    const summary = await remove(workspace, repo, branch)
+
+    assert.strictEqual(summary.portReleased, true, 'releasePort called')
+    assert.strictEqual(summary.jobRemoved, false, 'no job to remove')
+    assert.strictEqual(summary.overrideDeleted, true)
+    assert.strictEqual(summary.cloneDeleted, true)
+    assert.strictEqual(summary.errors.length, 0)
+  })
+
+  test('handles completely unknown workspace gracefully', async () => {
+    mkdirSync(testDir, { recursive: true })
+    writeFileSync(join(testDir, 'ports.json'), '{}')
+    writeFileSync(join(testDir, 'jobs.json'), '{}')
+
+    const summary = await remove('/nonexistent/workspace', 'test', 'nonexistent')
+
+    assert.strictEqual(summary.containerFound, false)
+    assert.strictEqual(summary.portReleased, true)
+    assert.strictEqual(summary.jobRemoved, false)
+    assert.strictEqual(summary.overrideDeleted, false)
+    assert.strictEqual(summary.cloneDeleted, false)
+    assert.strictEqual(summary.sessionsCleaned, 0)
+    assert.strictEqual(summary.errors.length, 0)
+  })
+
+  test('removal is idempotent', async () => {
+    createFullWorkspaceState()
+
+    const first = await remove(workspace, repo, branch)
+    assert.strictEqual(first.portReleased, true)
+    assert.strictEqual(first.jobRemoved, true)
+    assert.strictEqual(first.cloneDeleted, true)
+
+    const second = await remove(workspace, repo, branch)
+    assert.strictEqual(second.portReleased, true)
+    assert.strictEqual(second.jobRemoved, false, 'no job on second call')
+    assert.strictEqual(second.cloneDeleted, false, 'no clone on second call')
+    assert.strictEqual(second.errors.length, 0, 'no errors on repeat')
   })
 })

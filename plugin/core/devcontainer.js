@@ -9,14 +9,15 @@
  */
 
 import { spawn } from 'child_process'
-import { basename } from 'path'
+import { join, basename } from 'path'
+import { readdirSync, readFileSync, existsSync, unlinkSync } from 'fs'
+import { unlink } from 'fs/promises'
 import { PATHS, ensureDirs } from './paths.js'
 import { allocatePort, releasePort, readPorts, getContainerPort, updatePortAllocation } from './ports.js'
 import { generateOverrideConfig, getOverridePath } from './config.js'
-import { createClone, getClonePath } from './clones.js'
+import { createClone, getClonePath, removeClone } from './clones.js'
 import { getCurrentBranch, getRepoRoot } from './git.js'
-import { startJob, updateJob, JOB_STATUS } from './jobs.js'
-import { existsSync } from 'fs'
+import { startJob, updateJob, JOB_STATUS, removeJob } from './jobs.js'
 
 /**
  * Run a command and return a promise with the result
@@ -394,6 +395,189 @@ export async function exec(workspace, command, options = {}) {
 }
 
 /**
+ * Find Docker container ID for a workspace (running or stopped)
+ * 
+ * @param {string} workspace - Workspace path
+ * @returns {Promise<string|null>} Container ID or null if not found
+ */
+async function findContainerId(workspace) {
+  try {
+    const result = await runCommand('docker', [
+      'ps', '-a',
+      '--filter', `label=devcontainer.local_folder=${workspace}`,
+      '--format', '{{.ID}}',
+    ])
+    if (result.success && result.stdout) {
+      const id = result.stdout.split('\n')[0].trim()
+      return id || null
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Clean up session files that reference a workspace
+ * 
+ * Scans the sessions directory and deletes any session files
+ * whose workspace field matches the given workspace.
+ * 
+ * @param {string} workspace - Workspace path to match
+ * @returns {number} Number of session files cleaned up
+ */
+function cleanupWorkspaceSessions(workspace) {
+  const sessionsDir = PATHS.sessions
+  if (!existsSync(sessionsDir)) return 0
+
+  let cleaned = 0
+  const files = readdirSync(sessionsDir)
+
+  for (const file of files) {
+    if (!file.endsWith('.json')) continue
+    const filePath = join(sessionsDir, file)
+    try {
+      const content = readFileSync(filePath, 'utf-8')
+      const session = JSON.parse(content)
+      if (session.workspace === workspace) {
+        unlinkSync(filePath)
+        cleaned++
+      }
+    } catch {
+      // Skip unreadable files or invalid JSON
+    }
+  }
+
+  return cleaned
+}
+
+/**
+ * Remove a devcontainer completely
+ * 
+ * Orchestrates full cleanup:
+ * 1. Find Docker container
+ * 2. Stop Docker container
+ * 3. Get image reference
+ * 4. Remove Docker container
+ * 5. Remove Docker image
+ * 6. Release port allocation
+ * 7. Remove job entry
+ * 8. Delete override config
+ * 9. Delete clone folder
+ * 10. Clean up session files
+ * 
+ * @param {string} workspace - Absolute path to workspace
+ * @param {string} repo - Repository name
+ * @param {string} branch - Branch name
+ * @returns {Promise<{workspace: string, repo: string, branch: string, containerFound: boolean, containerStopped: boolean, containerRemoved: boolean, imageRemoved: boolean, portReleased: boolean, jobRemoved: boolean, overrideDeleted: boolean, cloneDeleted: boolean, sessionsCleaned: number, errors: string[]}>}
+ */
+export async function remove(workspace, repo, branch) {
+  const summary = {
+    workspace,
+    repo,
+    branch,
+    containerFound: false,
+    containerStopped: false,
+    containerRemoved: false,
+    imageRemoved: false,
+    portReleased: false,
+    jobRemoved: false,
+    overrideDeleted: false,
+    cloneDeleted: false,
+    sessionsCleaned: 0,
+    errors: [],
+  }
+
+  // 1. Find Docker container
+  const containerId = await findContainerId(workspace)
+  if (containerId) {
+    summary.containerFound = true
+
+    // 2. Stop container (ignore error if already stopped)
+    try {
+      await runCommand('docker', ['stop', containerId])
+      summary.containerStopped = true
+    } catch {
+      // Container might not be running
+    }
+
+    // 3. Get image ref before removing container
+    let imageRef = null
+    try {
+      const inspectResult = await runCommand('docker', [
+        'inspect', containerId,
+        '--format', '{{.Image}}',
+      ])
+      if (inspectResult.success && inspectResult.stdout) {
+        imageRef = inspectResult.stdout.trim()
+      }
+    } catch {
+      // Container may have already been removed externally
+    }
+
+    // 4. Remove container
+    try {
+      await runCommand('docker', ['rm', containerId])
+      summary.containerRemoved = true
+    } catch (err) {
+      summary.errors.push(`Failed to remove container: ${err.message}`)
+    }
+
+    // 5. Remove image (after container is removed)
+    if (imageRef) {
+      try {
+        await runCommand('docker', ['rmi', imageRef])
+        summary.imageRemoved = true
+      } catch {
+        // Image may be in use by other containers
+      }
+    }
+  }
+
+  // 6. Release port
+  try {
+    await releasePort(workspace)
+    summary.portReleased = true
+  } catch (err) {
+    summary.errors.push(`Failed to release port: ${err.message}`)
+  }
+
+  // 7. Remove job entry
+  try {
+    summary.jobRemoved = await removeJob(workspace)
+  } catch (err) {
+    summary.errors.push(`Failed to remove job: ${err.message}`)
+  }
+
+  // 8. Delete override config
+  try {
+    const overridePath = getOverridePath(workspace)
+    if (existsSync(overridePath)) {
+      await unlink(overridePath)
+      summary.overrideDeleted = true
+    }
+  } catch (err) {
+    summary.errors.push(`Failed to delete override: ${err.message}`)
+  }
+
+  // 9. Remove clone folder
+  try {
+    summary.cloneDeleted = await removeClone(repo, branch)
+  } catch (err) {
+    summary.errors.push(`Failed to remove clone: ${err.message}`)
+  }
+
+  // 10. Clean up session files
+  try {
+    summary.sessionsCleaned = cleanupWorkspaceSessions(workspace)
+  } catch (err) {
+    summary.errors.push(`Failed to clean sessions: ${err.message}`)
+  }
+
+  return summary
+}
+
+/**
  * Stop a devcontainer and release its port
  * 
  * @param {string} workspace - Workspace path
@@ -494,5 +678,6 @@ export default {
   down,
   list,
   isContainerRunning,
+  remove,
   runCommand,
 }

@@ -1,5 +1,5 @@
 import { 
-  mkdirSync, existsSync, readdirSync, unlinkSync, copyFileSync 
+  mkdirSync, existsSync, readdirSync, unlinkSync, copyFileSync, readFileSync 
 } from "fs"
 import { join, dirname, basename } from "path"
 import { fileURLToPath } from "url"
@@ -29,6 +29,10 @@ import {
   cleanupJobs,
   JOB_STATUS,
   PATHS,
+  remove,
+  listClones,
+  readPorts,
+  readJobs,
   // Worktree imports
   createWorktreeWorkspace,
   getRepoRoot,
@@ -116,6 +120,200 @@ function buildDevcontainerExecCommand(workspace, command) {
   return cmd
 }
 
+/**
+ * Format a single remove result for display
+ */
+function formatRemoveSummary(summary) {
+  const label = `${summary.repo}/${summary.branch}`
+  let output = `Removed devcontainer: ${label}\n`
+
+  if (summary.containerFound) {
+    output += `  - Container: ${summary.containerStopped ? "stopped and " : ""}removed\n`
+    if (summary.imageRemoved) {
+      output += `  - Image: removed\n`
+    } else if (summary.containerFound) {
+      output += `  - Image: could not remove (may be in use)\n`
+    }
+  } else {
+    output += `  - Container: not found\n`
+  }
+
+  output += `  - Port: ${summary.portReleased ? "released" : "error"}\n`
+  output += `  - Job entry: ${summary.jobRemoved !== false ? "cleaned up" : "not found"}\n`
+  output += `  - Override config: ${summary.overrideDeleted ? "deleted" : "error"}\n`
+  output += `  - Clone folder: ${summary.cloneDeleted ? "deleted" : "not found"}\n`
+
+  if (summary.sessionsCleaned > 0) {
+    output += `  - Sessions: ${summary.sessionsCleaned} cleaned up\n`
+  }
+
+  if (summary.errors.length > 0) {
+    output += `  Errors:\n`
+    for (const err of summary.errors) {
+      output += `    - ${err}\n`
+    }
+  }
+
+  return output
+}
+
+/**
+ * Count other sessions (excluding current) that reference a workspace.
+ * If workspace is null, counts all other sessions regardless of workspace.
+ */
+function countOtherSessions(workspace, currentSessionID) {
+  const sessionsDir = getSessionsDir()
+  if (!existsSync(sessionsDir)) return 0
+  const files = readdirSync(sessionsDir)
+  let count = 0
+  for (const file of files) {
+    if (!file.endsWith('.json')) continue
+    const sid = file.replace('.json', '')
+    if (sid === currentSessionID) continue
+    try {
+      const data = JSON.parse(readFileSync(join(sessionsDir, file), 'utf-8'))
+      if (workspace === null || data.workspace === workspace) count++
+    } catch {}
+  }
+  return count
+}
+
+async function handleRemoveSingle(rmArg, sessionID, confirmed) {
+  // Try to resolve workspace from branch name
+  const resolved = resolveWorkspace(rmArg)
+
+  if (!resolved) {
+    return `No devcontainer found for branch '${rmArg}'.\n\n` +
+           `Use \`/devcontainer\` to list active devcontainers or \`/devcontainer <branch>\` to set one up first.`
+  }
+
+  if (resolved.ambiguous) {
+    const options = resolved.matches
+      .map(m => `  - ${m.repoName}/${m.branch}`)
+      .join("\n")
+    return `Ambiguous branch '${rmArg}' found in multiple repos:\n${options}\n\n` +
+           `Use \`/devcontainer rm <repo>/${rmArg}\` to specify.`
+  }
+
+  const { workspace, repoName, branch } = resolved
+
+  // Pre-removal warnings (skip when already confirmed)
+  if (!confirmed) {
+    const msgs = []
+
+    try {
+      const status = await getWorkspaceStatus(workspace)
+      if (status.hasUncommitted) msgs.push("There are uncommitted changes in the workspace.")
+    } catch {}
+
+    if (countOtherSessions(workspace, sessionID) > 0) {
+      msgs.push("This workspace is active in other sessions.")
+    }
+
+    if (msgs.length > 0) {
+      return msgs.join('\n') + '\n\nAn explicit user confirmation required, it is non-negotiable.'
+    }
+  }
+
+  // Run the remove operation
+  const summary = await remove(workspace, repoName, branch)
+
+  // Clear current session if it targets this workspace
+  const session = loadSession(sessionID)
+  if (session && session.workspace === workspace) {
+    deleteSession(sessionID)
+  }
+
+  return formatRemoveSummary(summary)
+}
+
+/**
+ * Handle `/devcontainer rm all`
+ */
+async function handleRemoveAll(sessionID, confirmed) {
+  // Collect all tracked devcontainer workspaces from all sources
+  const seen = new Set()
+  const entries = []
+
+  // From clones directory
+  const clones = await listClones()
+  for (const c of clones) {
+    if (!seen.has(c.workspace)) {
+      seen.add(c.workspace)
+      entries.push(c)
+    }
+  }
+
+  // From ports.json (orphan entries not already covered)
+  const ports = await readPorts()
+  for (const [ws, data] of Object.entries(ports)) {
+    if (!seen.has(ws)) {
+      seen.add(ws)
+      entries.push({ workspace: ws, repo: data.repo, branch: data.branch })
+    }
+  }
+
+  // From jobs.json (orphan entries not already covered)
+  const jobs = await readJobs()
+  for (const [ws, data] of Object.entries(jobs)) {
+    if (!seen.has(ws)) {
+      seen.add(ws)
+      entries.push({ workspace: ws, repo: data.repo, branch: data.branch })
+    }
+  }
+
+  if (entries.length === 0) {
+    return "No devcontainers to clean up."
+  }
+
+  // Pre-removal warnings (skip when already confirmed)
+  if (!confirmed) {
+    const msgs = []
+
+    for (const entry of entries) {
+      try {
+        const status = await getWorkspaceStatus(entry.workspace)
+        if (status.hasUncommitted) {
+          msgs.push("Some workspaces have uncommitted changes.")
+          break
+        }
+      } catch {}
+    }
+
+    if (countOtherSessions(null, sessionID) > 0) {
+      msgs.push("Some workspaces are active in other sessions.")
+    }
+
+    if (msgs.length > 0) {
+      return msgs.join('\n') + '\n\nReply "yes" to confirm or "no" to cancel.'
+    }
+  }
+
+  // Remove each devcontainer
+  let output = `Removing ${entries.length} devcontainer(s)...\n\n`
+  let totalErrors = 0
+
+  for (const entry of entries) {
+    const summary = await remove(entry.workspace, entry.repo, entry.branch)
+    output += formatRemoveSummary(summary) + '\n'
+    totalErrors += summary.errors.length
+  }
+
+  // Clear current session
+  const session = loadSession(sessionID)
+  if (session) {
+    deleteSession(sessionID)
+    output += `Active session cleared.\n`
+  }
+
+  output += `\nDone. ${totalErrors} error(s) during cleanup.`
+  if (totalErrors > 0) {
+    output += ` Some containers or images may need manual cleanup via \`docker\` commands.`
+  }
+
+  return output
+}
+
 // ============ Plugin Export ============
 
 export const devcontainers = async ({ client }) => {
@@ -195,10 +393,13 @@ export const devcontainers = async ({ client }) => {
           create: tool.schema.string().optional().describe(
             "Set to 'true' to create the workspace if it doesn't exist (requires confirmation)"
           ),
+          confirmed: tool.schema.boolean().optional().describe(
+            "Set to true to confirm the remove operation after reviewing warnings about uncommitted changes or other active sessions"
+          ),
         },
         async execute(args, ctx) {
           const { sessionID, abort: signal } = ctx
-          const { target, create } = args
+          const { target, create, confirmed } = args
           const shouldCreate = create === "true" || create === true
           
           // Verify devcontainer CLI is installed
@@ -269,6 +470,21 @@ export const devcontainers = async ({ client }) => {
               return `Devcontainer mode disabled. Commands will now run on the host.`
             }
             return "No devcontainer was active for this session."
+          }
+          
+          // Remove request
+          if (target.startsWith("rm ")) {
+            const rmArg = target.slice(3).trim()
+            
+            if (!rmArg) {
+              return "Usage: `/devcontainer rm <branch>` or `/devcontainer rm all`"
+            }
+            
+            if (rmArg === "all") {
+              return await handleRemoveAll(sessionID, confirmed)
+            }
+            
+            return await handleRemoveSingle(rmArg, sessionID, confirmed)
           }
           
           // Resolve workspace (check if clone already exists)
