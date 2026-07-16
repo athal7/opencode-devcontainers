@@ -31,3 +31,7 @@ jobs:
     if: github.event_name == 'pull_request_target' && github.event.pull_request.user.login == 'dependabot[bot]'
     uses: athal7/gh-triage-workflows/.github/workflows/dependabot-automerge.yml@main
     secrets: inherit
+
+  jules-assign:
+    uses: athal7/gh-triage-workflows/.github/workflows/jules-assign.yml@main
+    secrets: inherit
