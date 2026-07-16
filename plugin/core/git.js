@@ -230,9 +230,9 @@ export async function isWorktree(dir) {
       return false
     }
     
-    // Verify it contains a gitdir reference
+    // Verify it contains a gitdir reference pointing to a worktree administrative directory
     const content = await readFile(gitPath, 'utf-8')
-    return content.startsWith('gitdir:')
+    return content.startsWith('gitdir:') && /[/\\]worktrees[/\\][^/\\]+\s*$/.test(content)
   } catch {
     return false
   }
