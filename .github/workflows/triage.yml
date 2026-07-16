@@ -5,6 +5,8 @@ on:
     types: [opened, edited, reopened]
   pull_request_target:
     types: [opened, edited, reopened]
+  pull_request_review:
+    types: [submitted]
   schedule:
     - cron: '30 1 * * *'
   workflow_dispatch:
@@ -18,4 +20,9 @@ jobs:
   stale:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     uses: athal7/gh-triage-workflows/.github/workflows/stale.yml@main
+    secrets: inherit
+
+  review-bridge:
+    if: github.event_name == 'pull_request_review' || github.event_name == 'pull_request_target'
+    uses: athal7/gh-triage-workflows/.github/workflows/review-bridge.yml@main
     secrets: inherit
