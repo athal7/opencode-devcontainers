@@ -26,3 +26,8 @@ jobs:
     if: github.event_name == 'pull_request_review' || github.event_name == 'pull_request_target'
     uses: athal7/gh-triage-workflows/.github/workflows/review-bridge.yml@main
     secrets: inherit
+
+  dependabot-automerge:
+    if: github.event_name == 'pull_request_target' && github.event.pull_request.user.login == 'dependabot[bot]'
+    uses: athal7/gh-triage-workflows/.github/workflows/dependabot-automerge.yml@main
+    secrets: inherit
