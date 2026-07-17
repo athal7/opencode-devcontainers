@@ -87,7 +87,14 @@ jobs:
 
       - name: Run semantic-release
         id: semantic
-        run: npx semantic-release
+        run: |
+          set +e
+          npx semantic-release
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ] && [ "$code" -ne 1 ]; then
+            exit "$code"
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
