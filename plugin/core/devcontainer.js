@@ -68,7 +68,8 @@ async function runCommand(cmd, args, options = {}) {
  */
 export async function checkDevcontainerCli() {
   try {
-    const result = await runCommand('which', ['devcontainer'])
+    const command = process.platform === 'win32' ? 'where' : 'which'
+    const result = await runCommand(command, ['devcontainer'])
     return result.success
   } catch {
     return false
