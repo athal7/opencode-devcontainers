@@ -30,6 +30,7 @@ export {
   checkDevcontainerCli,
   buildUpArgs,
   buildExecArgs,
+  remove,
 } from './devcontainer.js'
 
 // Job tracking for background operations
@@ -40,6 +41,7 @@ export {
   startJob,
   updateJob,
   getJob,
+  removeJob,
   cleanupJobs,
 } from './jobs.js'
 

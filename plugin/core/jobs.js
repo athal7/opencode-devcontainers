@@ -147,6 +147,20 @@ export async function getJob(workspace) {
 }
 
 /**
+ * Remove a job entry for a workspace
+ * 
+ * @param {string} workspace - Workspace path
+ * @returns {Promise<boolean>} True if job existed and was removed, false if not found
+ */
+export async function removeJob(workspace) {
+  const jobs = await readJobs()
+  if (!jobs[workspace]) return false
+  delete jobs[workspace]
+  await writeJobs(jobs)
+  return true
+}
+
+/**
  * Clean up old completed and failed jobs
  * 
  * @param {Object} [options]
@@ -195,5 +209,6 @@ export default {
   startJob,
   updateJob,
   getJob,
+  removeJob,
   cleanupJobs,
 }
