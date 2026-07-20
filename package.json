@@ -36,7 +36,7 @@
     "@opencode-ai/plugin": "^1.0.0"
   },
   "devDependencies": {
-    "@semantic-release/exec": "^6.0.3",
+    "@semantic-release/exec": "^7.1.0",
     "@semantic-release/git": "^10.0.1",
     "@semantic-release/github": "^9.2.6",
     "@semantic-release/npm": "^13.1.0",
