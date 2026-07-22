@@ -169,20 +169,35 @@ describe('generateOverrideConfig', () => {
     assert.ok(override.name.includes('13003'))
   })
 
-  test('sets correct workspaceFolder using repoName', async () => {
+  test('uses basename(workspace) for workspaceFolder', async () => {
+    // When workspace path is provided, basename(workspace) is used for workspaceFolder
     const workspace = join(testDir, 'workspace')
     const overridePath = await generateOverrideConfig(workspace, 13004, 'myrepo')
-    
+
     const override = JSON.parse(readFileSync(overridePath, 'utf-8'))
-    assert.strictEqual(override.workspaceFolder, '/workspaces/myrepo')
+    // workspaceFolder should use basename(workspace), not repoName
+    assert.strictEqual(override.workspaceFolder, '/workspaces/workspace')
   })
 
   test('falls back to basename when repoName not provided', async () => {
     const workspace = join(testDir, 'workspace')
     const overridePath = await generateOverrideConfig(workspace, 13004)
-    
+
     const override = JSON.parse(readFileSync(overridePath, 'utf-8'))
     assert.strictEqual(override.workspaceFolder, '/workspaces/workspace')
+  })
+
+  test('prefers basename(workspace) over repoName when both provided', async () => {
+    // When workspace path and repoName are both provided,
+    // basename(workspace) should take precedence for workspaceFolder
+    const workspace = join(testDir, 'my-clone')
+    const overridePath = await generateOverrideConfig(workspace, 13007, 'different-repo-name')
+
+    const override = JSON.parse(readFileSync(overridePath, 'utf-8'))
+    // workspaceFolder should use basename(workspace), not repoName
+    assert.strictEqual(override.workspaceFolder, '/workspaces/my-clone')
+    // name should also use basename(workspace)
+    assert.strictEqual(override.name, 'my-clone (port 13007)')
   })
 
   test('handles config without runArgs', async () => {

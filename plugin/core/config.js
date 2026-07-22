@@ -163,7 +163,7 @@ function removePortArgs(runArgs) {
 export async function generateOverrideConfig(workspace, port, repoName) {
   const baseConfig = await readDevcontainerJson(workspace) || {}
   const internalPort = detectInternalPort(baseConfig)
-  const workspaceName = repoName || basename(workspace)
+  const workspaceName = basename(workspace) || repoName 
 
   // Build override config
   // Remove forwardPorts and appPort to prevent devcontainer CLI from setting up
