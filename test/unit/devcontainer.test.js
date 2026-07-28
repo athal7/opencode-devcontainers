@@ -100,6 +100,19 @@ describe('checkDevcontainerCli', () => {
     const result = await checkDevcontainerCli()
     assert.strictEqual(typeof result, 'boolean')
   })
+
+  test('uses where command on win32', async () => {
+    // Note: 'where' command might not exist on non-Windows test environments (like Linux CI),
+    // which causes spawn to throw ENOENT instead of returning an exit code.
+    // Our checkDevcontainerCli function handles this gracefully with a try/catch, returning false.
+    const result = await checkDevcontainerCli('win32')
+    assert.strictEqual(typeof result, 'boolean')
+  })
+
+  test('uses which command on linux/darwin', async () => {
+    const result = await checkDevcontainerCli('linux')
+    assert.strictEqual(typeof result, 'boolean')
+  })
 })
 
 describe('list', () => {

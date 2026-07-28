@@ -65,11 +65,13 @@ async function runCommand(cmd, args, options = {}) {
 /**
  * Check if the devcontainer CLI is installed
  * 
+ * @param {string} [platform] - Platform to check (defaults to process.platform)
  * @returns {Promise<boolean>}
  */
-export async function checkDevcontainerCli() {
+export async function checkDevcontainerCli(platform = process.platform) {
   try {
-    const result = await runCommand('which', ['devcontainer'])
+    const command = platform === 'win32' ? 'where' : 'which'
+    const result = await runCommand(command, ['devcontainer'])
     return result.success
   } catch {
     return false
