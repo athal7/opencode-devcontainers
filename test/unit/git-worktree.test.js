@@ -63,6 +63,25 @@ describe('isWorktree', () => {
     const result = await isWorktree('/nonexistent/path')
     assert.strictEqual(result, false)
   })
+
+  test('returns false for a submodule directory', async () => {
+    const subRepo = join(testDir, 'sub-repo')
+    const submodulePath = join(mainRepo, 'sub')
+
+    mkdirSync(subRepo, { recursive: true })
+    execSync('git init -b main', { cwd: subRepo })
+    writeFileSync(join(subRepo, 'sub.txt'), 'sub')
+    execSync('git add .', { cwd: subRepo })
+    execSync('git commit -m "sub commit"', { cwd: subRepo })
+
+    // Add submodule to main repo
+    execSync('git config --global protocol.file.allow always', { cwd: mainRepo })
+    execSync(`git submodule add ${subRepo} sub`, { cwd: mainRepo })
+    execSync('git commit -m "add submodule"', { cwd: mainRepo })
+
+    const result = await isWorktree(submodulePath)
+    assert.strictEqual(result, false)
+  })
 })
 
 describe('getWorktreeMainRepo', () => {
