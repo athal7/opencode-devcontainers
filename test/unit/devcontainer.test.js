@@ -96,6 +96,7 @@ describe('checkDevcontainerCli', () => {
 
   afterEach(() => {
     Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
+    mock.reset()
   })
 
   test('returns boolean', async () => {
@@ -103,18 +104,46 @@ describe('checkDevcontainerCli', () => {
     assert.strictEqual(typeof result, 'boolean')
   })
 
-  test('uses where command on win32', async () => {
+  test('uses where command on win32', async (t) => {
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
 
-    // We can run checkDevcontainerCli and since 'where' may or may not be available on this sandbox environment (it is a linux sandbox, so 'where' is likely NOT available, or might be something else), we expect checkDevcontainerCli to run and handle it without throwing errors (returns boolean)
+    // Import runCommand and mock it to intercept the execution
+    const devcontainer = await import('../../plugin/core/devcontainer.js')
+    const runCommandMock = t.mock.method(devcontainer, 'runCommand', async (cmd, args) => {
+      return { success: true, stdout: '/path/to/devcontainer', stderr: '', exitCode: 0 }
+    })
+
     const result = await checkDevcontainerCli()
+
+    // Assert the command executed was 'where'
+    assert.strictEqual(runCommandMock.mock.calls.length, 1)
+    assert.strictEqual(runCommandMock.mock.calls[0].arguments[0], 'where')
+    assert.deepStrictEqual(runCommandMock.mock.calls[0].arguments[1], ['devcontainer'])
+
+    // Preserve existing boolean assertion
     assert.strictEqual(typeof result, 'boolean')
+    assert.strictEqual(result, true)
   })
 
-  test('uses which command on linux/darwin', async () => {
+  test('uses which command on linux/darwin', async (t) => {
     Object.defineProperty(process, 'platform', { value: 'linux', configurable: true })
+
+    // Import runCommand and mock it to intercept the execution
+    const devcontainer = await import('../../plugin/core/devcontainer.js')
+    const runCommandMock = t.mock.method(devcontainer, 'runCommand', async (cmd, args) => {
+      return { success: true, stdout: '/usr/bin/devcontainer', stderr: '', exitCode: 0 }
+    })
+
     const result = await checkDevcontainerCli()
+
+    // Assert the command executed was 'which'
+    assert.strictEqual(runCommandMock.mock.calls.length, 1)
+    assert.strictEqual(runCommandMock.mock.calls[0].arguments[0], 'which')
+    assert.deepStrictEqual(runCommandMock.mock.calls[0].arguments[1], ['devcontainer'])
+
+    // Preserve existing boolean assertion
     assert.strictEqual(typeof result, 'boolean')
+    assert.strictEqual(result, true)
   })
 })
 
