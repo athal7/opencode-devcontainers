@@ -75,8 +75,7 @@ describe('isWorktree', () => {
     execSync('git commit -m "sub commit"', { cwd: subRepo })
 
     // Add submodule to main repo
-    execSync('git config --global protocol.file.allow always', { cwd: mainRepo })
-    execSync(`git submodule add ${subRepo} sub`, { cwd: mainRepo })
+    execSync(`git -c protocol.file.allow=always submodule add ${subRepo} sub`, { cwd: mainRepo })
     execSync('git commit -m "add submodule"', { cwd: mainRepo })
 
     const result = await isWorktree(submodulePath)
