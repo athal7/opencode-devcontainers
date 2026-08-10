@@ -19,19 +19,16 @@ module.exports = {
     // Generate release notes
     '@semantic-release/release-notes-generator',
     
-    // Update version in package.json and publish to npm with provenance
+    // Publish to npm with provenance. package.json's committed version
+    // stays a placeholder (0.0.0-development) — semantic-release sets
+    // the real version only in this ephemeral CI checkout before
+    // `npm publish`, and never commits it back to the repo. No PR, no
+    // committed version file, ever; the npm registry and git tags are
+    // the only sources of truth for the release version.
     ['@semantic-release/npm', { provenance: true }],
-    
-    // Commit the version changes
-    [
-      '@semantic-release/git',
-      {
-        assets: ['package.json', 'package-lock.json'],
-        message: 'chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}'
-      }
-    ],
-    
-    // Create GitHub release
+
+    // Create GitHub release directly from HEAD's tree (no version-bump
+    // commit precedes it)
     '@semantic-release/github'
   ]
 };
