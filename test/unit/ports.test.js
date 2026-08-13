@@ -9,6 +9,8 @@ import assert from 'node:assert'
 import { join } from 'path'
 import { homedir } from 'os'
 import { mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from 'fs'
+import childProcess from 'child_process'
+import { EventEmitter } from 'events'
 
 // Module under test
 import { 
@@ -308,6 +310,56 @@ describe('getContainerPort', () => {
     const port = await getContainerPort('/some/path')
     // Should not throw, just return null
     assert.strictEqual(port, null)
+  })
+})
+
+describe('getContainerPort with a configured runtime', () => {
+  const testDir = join(homedir(), '.cache/ocdc-test-runtime-port-' + Date.now())
+
+  beforeEach(() => {
+    process.env.OCDC_CACHE_DIR = testDir
+    process.env.OCDC_CONFIG_DIR = join(testDir, 'config')
+    mkdirSync(join(testDir, 'config'), { recursive: true })
+    writeFileSync(
+      join(testDir, 'config', 'config.json'),
+      JSON.stringify({
+        dockerPath: '/usr/bin/podman',
+        dockerComposePath: '/usr/bin/podman-compose',
+      })
+    )
+  })
+
+  afterEach(() => {
+    delete process.env.OCDC_CACHE_DIR
+    delete process.env.OCDC_CONFIG_DIR
+    rmSync(testDir, { recursive: true, force: true })
+  })
+
+  test('inspects containers through the configured runtime', async (t) => {
+    const commands = []
+    t.mock.method(childProcess, 'spawn', (command, args) => {
+      commands.push({ command, args })
+      const child = new EventEmitter()
+      child.stdout = new EventEmitter()
+      child.stderr = new EventEmitter()
+      process.nextTick(() => {
+        if (args[0] === 'ps') {
+          child.stdout.emit('data', 'container-id\n')
+        } else {
+          child.stdout.emit('data', '{"3000/tcp":[{"HostPort":"13042"}]}')
+        }
+        child.emit('close', 0)
+      })
+      return child
+    })
+
+    const port = await getContainerPort('/workspace/test')
+
+    assert.strictEqual(port, 13042)
+    assert.deepStrictEqual(
+      commands.map(({ command }) => command),
+      ['/usr/bin/podman', '/usr/bin/podman']
+    )
   })
 })
 

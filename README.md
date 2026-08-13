@@ -80,7 +80,7 @@ When a worktree is targeted:
 | Project has devcontainer.json | `/devcontainer` |
 | Different dependencies per branch | `/devcontainer` |
 | Quick branch work, same deps | `/worktree` |
-| No Docker available | `/worktree` |
+| No Docker or Podman available | `/worktree` |
 | Testing migrations/databases | `/devcontainer` |
 
 ## Configuration
@@ -89,9 +89,13 @@ When a worktree is targeted:
 ```json
 {
   "portRangeStart": 13000,
-  "portRangeEnd": 13099
+  "portRangeEnd": 13099,
+  "dockerPath": "podman",
+  "dockerComposePath": "podman-compose"
 }
 ```
+
+`dockerPath` and `dockerComposePath` are optional. When unset, the plugin uses Docker when available, otherwise Podman. A Podman runtime requires either `podman-compose` or `docker-compose`; the plugin detects one automatically and reports an unsupported configuration when neither is available. Set both paths explicitly to use nonstandard executable locations.
 
 ## How It Works
 

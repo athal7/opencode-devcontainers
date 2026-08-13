@@ -11,8 +11,9 @@ import { join } from 'path'
 import { mkdir, rmdir, readFile, writeFile, stat } from 'fs/promises'
 import { existsSync } from 'fs'
 import { createServer } from 'net'
-import { spawn } from 'child_process'
+import childProcess from 'child_process'
 import { PATHS } from './paths.js'
+import { loadUserConfig } from './config.js'
 
 /**
  * File-based locking using mkdir (atomic on all platforms)
@@ -90,26 +91,6 @@ export async function writePorts(ports) {
   await writeFile(PATHS.ports, content) // rename not available, just write
 }
 
-/**
- * Read config.json to get port range
- * 
- * @returns {Promise<{portRangeStart: number, portRangeEnd: number}>}
- */
-async function readConfig() {
-  try {
-    const content = await readFile(PATHS.configFile, 'utf-8')
-    const config = JSON.parse(content)
-    return {
-      portRangeStart: config.portRangeStart || 13000,
-      portRangeEnd: config.portRangeEnd || 13099,
-    }
-  } catch {
-    return {
-      portRangeStart: 13000,
-      portRangeEnd: 13099,
-    }
-  }
-}
 
 /**
  * Check if a port is free (not in use by any process)
@@ -156,7 +137,7 @@ export async function allocatePort(workspace, repo, branch) {
 
   return withLock(lockPath, async () => {
     const ports = await readPorts()
-    const config = await readConfig()
+    const config = await loadUserConfig()
 
     // Check existing assignment
     if (ports[workspace]) {
@@ -224,7 +205,7 @@ export async function listPorts() {
  */
 async function runCommand(cmd, args) {
   return new Promise((resolve, reject) => {
-    const child = spawn(cmd, args, {
+    const child = childProcess.spawn(cmd, args, {
       stdio: ['ignore', 'pipe', 'pipe'],
     })
 
@@ -263,8 +244,11 @@ async function runCommand(cmd, args) {
  */
 export async function getContainerPort(workspace) {
   try {
+    const config = await loadUserConfig()
+    const dockerPath = config.dockerPath || 'docker'
+
     // Find container with matching workspace label
-    const result = await runCommand('docker', [
+    const result = await runCommand(dockerPath, [
       'ps',
       '--filter', `label=devcontainer.local_folder=${workspace}`,
       '--format', '{{.ID}}',
@@ -280,7 +264,7 @@ export async function getContainerPort(workspace) {
     }
 
     // Get port mappings from container
-    const inspectResult = await runCommand('docker', [
+    const inspectResult = await runCommand(dockerPath, [
       'inspect',
       '--format', '{{json .NetworkSettings.Ports}}',
       containerId,

@@ -9,6 +9,8 @@ import assert from 'node:assert'
 import { join, basename } from 'path'
 import { homedir } from 'os'
 import { mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from 'fs'
+import childProcess from 'child_process'
+import { EventEmitter } from 'events'
 
 // Module under test
 import { 
@@ -269,5 +271,74 @@ describe('loadUserConfig', () => {
     const config = await loadUserConfig()
     assert.strictEqual(config.portRangeStart, 15000)
     assert.strictEqual(config.portRangeEnd, 13099) // Default
+  })
+
+  test('selects podman-compose when Podman is auto-detected', async (t) => {
+    t.mock.method(childProcess, 'spawn', (command, [target]) => {
+      const child = new EventEmitter()
+      process.nextTick(() => child.emit('close', target === 'podman' || target === 'podman-compose' ? 0 : 1))
+      return child
+    })
+
+    const config = await loadUserConfig()
+    assert.strictEqual(config.dockerPath, 'podman')
+    assert.strictEqual(config.dockerComposePath, 'podman-compose')
+  })
+
+  test('uses docker-compose when configured Podman lacks podman-compose', async (t) => {
+    writeFileSync(
+      join(testDir, 'config.json'),
+      JSON.stringify({ dockerPath: '/usr/bin/podman' })
+    )
+    t.mock.method(childProcess, 'spawn', (command, [target]) => {
+      const child = new EventEmitter()
+      process.nextTick(() => child.emit('close', target === 'docker-compose' ? 0 : 1))
+      return child
+    })
+
+    const config = await loadUserConfig()
+
+    assert.strictEqual(config.dockerComposePath, 'docker-compose')
+  })
+
+  test('preserves explicit runtime executable paths', async () => {
+    writeFileSync(
+      join(testDir, 'config.json'),
+      JSON.stringify({ dockerPath: '/opt/bin/podman', dockerComposePath: '/opt/bin/podman-compose' })
+    )
+
+    const config = await loadUserConfig()
+
+    assert.strictEqual(config.dockerPath, '/opt/bin/podman')
+    assert.strictEqual(config.dockerComposePath, '/opt/bin/podman-compose')
+  })
+
+  test('preserves explicitly configured Docker executables', async () => {
+    writeFileSync(
+      join(testDir, 'config.json'),
+      JSON.stringify({ dockerPath: 'custom-docker', dockerComposePath: 'custom-compose' })
+    )
+
+    const config = await loadUserConfig()
+
+    assert.strictEqual(config.dockerPath, 'custom-docker')
+    assert.strictEqual(config.dockerComposePath, 'custom-compose')
+  })
+
+  test('rejects Podman without an available Compose command', async (t) => {
+    writeFileSync(
+      join(testDir, 'config.json'),
+      JSON.stringify({ dockerPath: '/usr/bin/podman' })
+    )
+    t.mock.method(childProcess, 'spawn', () => {
+      const child = new EventEmitter()
+      process.nextTick(() => child.emit('close', 1))
+      return child
+    })
+
+    await assert.rejects(
+      loadUserConfig(),
+      /no compatible Compose command is available for Podman/
+    )
   })
 })
