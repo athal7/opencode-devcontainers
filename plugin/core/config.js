@@ -211,6 +211,7 @@ async function detectComposePath(dockerPath) {
   )
 }
 
+
 /**
  * Load user configuration
  * 
@@ -222,6 +223,7 @@ export async function loadUserConfig() {
     const content = await readFile(PATHS.configFile, 'utf-8')
     userConfig = JSON.parse(content)
   } catch {
+
   }
 
   const config = { ...DEFAULT_CONFIG, ...userConfig }

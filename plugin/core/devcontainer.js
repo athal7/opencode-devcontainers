@@ -116,6 +116,8 @@ export function buildUpArgs(workspace, overridePath, options = {}) {
  * @param {string} command - Command to execute
  * @param {object} [options]
  * @param {string} [options.overridePath] - Override config path
+ * @param {string} [options.dockerPath] - Docker CLI path
+ * @param {string} [options.dockerComposePath] - Docker Compose CLI path
  * @returns {string[]}
  */
 export function buildExecArgs(workspace, command, options = {}) {
@@ -201,6 +203,7 @@ export async function up(workspaceOrBranch, options = {}) {
   if (!devcontainerPath) {
     throw new Error(`No devcontainer.json found in ${workspace}`)
   }
+
 
   const config = await loadUserConfig()
 
@@ -423,6 +426,7 @@ export async function exec(workspace, command, options = {}) {
  * Find Docker container ID for a workspace (running or stopped)
  * 
  * @param {string} workspace - Workspace path
+ * @param {string} [dockerPath] - Path/command for docker CLI (defaults to 'docker')
  * @returns {Promise<string|null>} Container ID or null if not found
  */
 async function findContainerId(workspace, dockerPath = 'docker') {
