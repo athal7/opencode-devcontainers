@@ -54,6 +54,21 @@ describe('buildUpArgs', () => {
     
     assert.ok(!args.includes('--remove-existing-container'))
   })
+
+  test('includes docker-path and docker-compose-path when specified', () => {
+    const args = buildUpArgs('/workspace', '/override.json', {
+      dockerPath: 'podman',
+      dockerComposePath: 'podman-compose',
+    })
+
+    const dpIndex = args.indexOf('--docker-path')
+    assert.ok(dpIndex >= 0)
+    assert.strictEqual(args[dpIndex + 1], 'podman')
+
+    const dcpIndex = args.indexOf('--docker-compose-path')
+    assert.ok(dcpIndex >= 0)
+    assert.strictEqual(args[dcpIndex + 1], 'podman-compose')
+  })
 })
 
 describe('buildExecArgs', () => {
@@ -92,6 +107,21 @@ describe('buildExecArgs', () => {
     assert.strictEqual(args[dashIndex + 1], 'sh')
     assert.strictEqual(args[dashIndex + 2], '-c')
     assert.strictEqual(args[dashIndex + 3], 'npm test')
+  })
+
+  test('includes docker-path and docker-compose-path when specified', () => {
+    const args = buildExecArgs('/workspace', 'npm test', {
+      dockerPath: 'podman',
+      dockerComposePath: 'podman-compose',
+    })
+
+    const dpIndex = args.indexOf('--docker-path')
+    assert.ok(dpIndex >= 0)
+    assert.strictEqual(args[dpIndex + 1], 'podman')
+
+    const dcpIndex = args.indexOf('--docker-compose-path')
+    assert.ok(dcpIndex >= 0)
+    assert.strictEqual(args[dcpIndex + 1], 'podman-compose')
   })
 })
 

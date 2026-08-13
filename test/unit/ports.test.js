@@ -9,6 +9,8 @@ import assert from 'node:assert'
 import { join } from 'path'
 import { homedir } from 'os'
 import { mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from 'fs'
+import childProcess from 'child_process'
+import { EventEmitter } from 'events'
 
 // Module under test
 import { 
@@ -308,6 +310,46 @@ describe('getContainerPort', () => {
     const port = await getContainerPort('/some/path')
     // Should not throw, just return null
     assert.strictEqual(port, null)
+  })
+})
+
+describe('getContainerPort with custom runtime', () => {
+  const testDir = join(homedir(), '.cache/ocdc-test-gcp-' + Date.now())
+
+  beforeEach(() => {
+    process.env.OCDC_CACHE_DIR = testDir
+    process.env.OCDC_CONFIG_DIR = join(testDir, 'config')
+    mkdirSync(testDir, { recursive: true })
+    mkdirSync(join(testDir, 'config'), { recursive: true })
+  })
+
+  afterEach(() => {
+    delete process.env.OCDC_CACHE_DIR
+    delete process.env.OCDC_CONFIG_DIR
+    rmSync(testDir, { recursive: true, force: true })
+  })
+
+  test('uses podman when configured', async (t) => {
+    // Write config pointing to podman
+    writeFileSync(
+      join(testDir, 'config', 'config.json'),
+      JSON.stringify({ dockerPath: 'podman' })
+    )
+
+    const commandsCalled = []
+
+    t.mock.method(childProcess, 'spawn', (cmd, args) => {
+      commandsCalled.push(cmd)
+      const ee = new EventEmitter()
+      process.nextTick(() => {
+        // Return exit code 1 to abort early, which is fine as we just want to verify what command was called
+        ee.emit('close', 1)
+      })
+      return ee
+    })
+
+    await getContainerPort('/workspace/test')
+    assert.ok(commandsCalled.includes('podman'), `Expected 'podman' to be called, but got: ${commandsCalled.join(', ')}`)
   })
 })
 

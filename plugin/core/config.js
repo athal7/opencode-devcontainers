@@ -10,6 +10,7 @@
 import { join, basename } from 'path'
 import { readFile, writeFile, mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
+import childProcess from 'child_process'
 import { PATHS, pathId } from './paths.js'
 
 // Default configuration values
@@ -189,18 +190,71 @@ export async function generateOverrideConfig(workspace, port, repoName) {
 }
 
 /**
+ * Check if a command is available on the system
+ *
+ * @param {string} cmd - Command to check
+ * @param {string} [platform] - Platform to check (defaults to process.platform)
+ * @returns {Promise<boolean>}
+ */
+export async function checkCommand(cmd, platform = process.platform) {
+  return new Promise(resolve => {
+    const command = platform === 'win32' ? 'where' : 'which'
+    const child = childProcess.spawn(command, [cmd], { stdio: 'ignore' })
+    child.on('close', code => {
+      resolve(code === 0)
+    })
+    child.on('error', () => {
+      resolve(false)
+    })
+  })
+}
+
+/**
  * Load user configuration
  * 
  * @returns {Promise<object>} Merged user config with defaults
  */
 export async function loadUserConfig() {
+  let userConfig = {}
   try {
     const content = await readFile(PATHS.configFile, 'utf-8')
-    const userConfig = JSON.parse(content)
-    return { ...DEFAULT_CONFIG, ...userConfig }
+    userConfig = JSON.parse(content)
   } catch {
-    return { ...DEFAULT_CONFIG }
+    // Ignore error, use defaults
   }
+
+  const config = { ...DEFAULT_CONFIG, ...userConfig }
+
+  // Auto-detect dockerPath if not specified
+  if (!config.dockerPath) {
+    const hasDocker = await checkCommand('docker')
+    if (hasDocker) {
+      config.dockerPath = 'docker'
+    } else {
+      const hasPodman = await checkCommand('podman')
+      if (hasPodman) {
+        config.dockerPath = 'podman'
+      } else {
+        config.dockerPath = 'docker' // Fallback default
+      }
+    }
+  }
+
+  // Auto-detect dockerComposePath if not specified
+  if (!config.dockerComposePath) {
+    if (config.dockerPath === 'podman') {
+      const hasPodmanCompose = await checkCommand('podman-compose')
+      if (hasPodmanCompose) {
+        config.dockerComposePath = 'podman-compose'
+      } else {
+        config.dockerComposePath = 'docker-compose'
+      }
+    } else {
+      config.dockerComposePath = 'docker-compose'
+    }
+  }
+
+  return config
 }
 
 export default {
@@ -209,4 +263,5 @@ export default {
   detectInternalPort,
   generateOverrideConfig,
   loadUserConfig,
+  checkCommand,
 }

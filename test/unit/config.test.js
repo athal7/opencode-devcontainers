@@ -4,11 +4,13 @@
  * Run with: node --test test/unit/config.test.js
  */
 
-import { test, describe, beforeEach, afterEach } from 'node:test'
+import { test, describe, beforeEach, afterEach, mock } from 'node:test'
 import assert from 'node:assert'
 import { join, basename } from 'path'
 import { homedir } from 'os'
 import { mkdirSync, rmSync, writeFileSync, readFileSync, existsSync } from 'fs'
+import childProcess from 'child_process'
+import { EventEmitter } from 'events'
 
 // Module under test
 import { 
@@ -269,5 +271,78 @@ describe('loadUserConfig', () => {
     const config = await loadUserConfig()
     assert.strictEqual(config.portRangeStart, 15000)
     assert.strictEqual(config.portRangeEnd, 13099) // Default
+  })
+
+  test('auto-detects dockerPath as docker when docker is available', async (t) => {
+    t.mock.method(childProcess, 'spawn', (cmd, args) => {
+      const ee = new EventEmitter()
+      process.nextTick(() => {
+        if (args[0] === 'docker') {
+          ee.emit('close', 0) // Found
+        } else {
+          ee.emit('close', 1) // Not found
+        }
+      })
+      return ee
+    })
+
+    const config = await loadUserConfig()
+    assert.strictEqual(config.dockerPath, 'docker')
+    assert.strictEqual(config.dockerComposePath, 'docker-compose')
+  })
+
+  test('auto-detects dockerPath as podman when docker is missing but podman is available', async (t) => {
+    t.mock.method(childProcess, 'spawn', (cmd, args) => {
+      const ee = new EventEmitter()
+      process.nextTick(() => {
+        if (args[0] === 'docker') {
+          ee.emit('close', 1) // Not found
+        } else if (args[0] === 'podman') {
+          ee.emit('close', 0) // Found
+        } else if (args[0] === 'podman-compose') {
+          ee.emit('close', 0) // Found
+        } else {
+          ee.emit('close', 1)
+        }
+      })
+      return ee
+    })
+
+    const config = await loadUserConfig()
+    assert.strictEqual(config.dockerPath, 'podman')
+    assert.strictEqual(config.dockerComposePath, 'podman-compose')
+  })
+
+  test('auto-detects podman without podman-compose defaults to docker-compose', async (t) => {
+    t.mock.method(childProcess, 'spawn', (cmd, args) => {
+      const ee = new EventEmitter()
+      process.nextTick(() => {
+        if (args[0] === 'docker') {
+          ee.emit('close', 1) // Not found
+        } else if (args[0] === 'podman') {
+          ee.emit('close', 0) // Found
+        } else if (args[0] === 'podman-compose') {
+          ee.emit('close', 1) // Not found
+        } else {
+          ee.emit('close', 1)
+        }
+      })
+      return ee
+    })
+
+    const config = await loadUserConfig()
+    assert.strictEqual(config.dockerPath, 'podman')
+    assert.strictEqual(config.dockerComposePath, 'docker-compose')
+  })
+
+  test('respects user config override for dockerPath and dockerComposePath', async () => {
+    writeFileSync(
+      join(testDir, 'config.json'),
+      JSON.stringify({ dockerPath: 'custom-docker', dockerComposePath: 'custom-compose' })
+    )
+
+    const config = await loadUserConfig()
+    assert.strictEqual(config.dockerPath, 'custom-docker')
+    assert.strictEqual(config.dockerComposePath, 'custom-compose')
   })
 })

@@ -14,7 +14,7 @@ import { readdirSync, readFileSync, existsSync, unlinkSync } from 'fs'
 import { unlink } from 'fs/promises'
 import { PATHS, ensureDirs } from './paths.js'
 import { allocatePort, releasePort, readPorts, getContainerPort, updatePortAllocation } from './ports.js'
-import { generateOverrideConfig, getOverridePath } from './config.js'
+import { generateOverrideConfig, getOverridePath, loadUserConfig } from './config.js'
 import { createClone, getClonePath, removeClone } from './clones.js'
 import { getCurrentBranch, getRepoRoot } from './git.js'
 import { startJob, updateJob, JOB_STATUS, removeJob } from './jobs.js'
@@ -98,6 +98,14 @@ export function buildUpArgs(workspace, overridePath, options = {}) {
     args.push('--remove-existing-container')
   }
 
+  if (options.dockerPath) {
+    args.push('--docker-path', options.dockerPath)
+  }
+
+  if (options.dockerComposePath) {
+    args.push('--docker-compose-path', options.dockerComposePath)
+  }
+
   return args
 }
 
@@ -108,6 +116,8 @@ export function buildUpArgs(workspace, overridePath, options = {}) {
  * @param {string} command - Command to execute
  * @param {object} [options]
  * @param {string} [options.overridePath] - Override config path
+ * @param {string} [options.dockerPath] - Docker CLI path
+ * @param {string} [options.dockerComposePath] - Docker Compose CLI path
  * @returns {string[]}
  */
 export function buildExecArgs(workspace, command, options = {}) {
@@ -118,6 +128,14 @@ export function buildExecArgs(workspace, command, options = {}) {
 
   if (options.overridePath) {
     args.push('--override-config', options.overridePath)
+  }
+
+  if (options.dockerPath) {
+    args.push('--docker-path', options.dockerPath)
+  }
+
+  if (options.dockerComposePath) {
+    args.push('--docker-compose-path', options.dockerComposePath)
   }
 
   // Use sh -c to properly handle commands with arguments, pipes, and redirects
@@ -186,6 +204,9 @@ export async function up(workspaceOrBranch, options = {}) {
     throw new Error(`No devcontainer.json found in ${workspace}`)
   }
 
+  // Load config for container runtime options
+  const config = await loadUserConfig()
+
   // Allocate port
   const portAllocation = await allocatePort(workspace, repoName, branch)
   const port = portAllocation.port
@@ -196,6 +217,8 @@ export async function up(workspaceOrBranch, options = {}) {
   // Build command args
   const args = buildUpArgs(workspace, overridePath, {
     removeExisting: options.removeExisting,
+    dockerPath: config.dockerPath,
+    dockerComposePath: config.dockerComposePath,
   })
 
   if (options.dryRun) {
@@ -377,11 +400,14 @@ function runUpInBackground(workspaceOrBranch, workspace, options) {
  * @returns {Promise<{stdout: string, stderr: string, exitCode: number}>}
  */
 export async function exec(workspace, command, options = {}) {
+  const config = await loadUserConfig()
   const overridePath = getOverridePath(workspace)
   const hasOverride = existsSync(overridePath)
 
   const args = buildExecArgs(workspace, command, {
     overridePath: hasOverride ? overridePath : undefined,
+    dockerPath: config.dockerPath,
+    dockerComposePath: config.dockerComposePath,
   })
 
   const result = await runCommand('devcontainer', args, {
@@ -400,11 +426,12 @@ export async function exec(workspace, command, options = {}) {
  * Find Docker container ID for a workspace (running or stopped)
  * 
  * @param {string} workspace - Workspace path
+ * @param {string} [dockerPath] - Path/command for docker CLI (defaults to 'docker')
  * @returns {Promise<string|null>} Container ID or null if not found
  */
-async function findContainerId(workspace) {
+async function findContainerId(workspace, dockerPath = 'docker') {
   try {
-    const result = await runCommand('docker', [
+    const result = await runCommand(dockerPath, [
       'ps', '-a',
       '--filter', `label=devcontainer.local_folder=${workspace}`,
       '--format', '{{.ID}}',
@@ -490,14 +517,17 @@ export async function remove(workspace, repo, branch) {
     errors: [],
   }
 
+  const config = await loadUserConfig()
+  const dockerPath = config.dockerPath || 'docker'
+
   // 1. Find Docker container
-  const containerId = await findContainerId(workspace)
+  const containerId = await findContainerId(workspace, dockerPath)
   if (containerId) {
     summary.containerFound = true
 
     // 2. Stop container (ignore error if already stopped)
     try {
-      await runCommand('docker', ['stop', containerId])
+      await runCommand(dockerPath, ['stop', containerId])
       summary.containerStopped = true
     } catch {
       // Container might not be running
@@ -506,7 +536,7 @@ export async function remove(workspace, repo, branch) {
     // 3. Get image ref before removing container
     let imageRef = null
     try {
-      const inspectResult = await runCommand('docker', [
+      const inspectResult = await runCommand(dockerPath, [
         'inspect', containerId,
         '--format', '{{.Image}}',
       ])
@@ -519,7 +549,7 @@ export async function remove(workspace, repo, branch) {
 
     // 4. Remove container
     try {
-      await runCommand('docker', ['rm', containerId])
+      await runCommand(dockerPath, ['rm', containerId])
       summary.containerRemoved = true
     } catch (err) {
       summary.errors.push(`Failed to remove container: ${err.message}`)
@@ -528,7 +558,7 @@ export async function remove(workspace, repo, branch) {
     // 5. Remove image (after container is removed)
     if (imageRef) {
       try {
-        await runCommand('docker', ['rmi', imageRef])
+        await runCommand(dockerPath, ['rmi', imageRef])
         summary.imageRemoved = true
       } catch {
         // Image may be in use by other containers
@@ -654,8 +684,10 @@ export async function list(options = {}) {
  */
 export async function isContainerRunning(workspace) {
   try {
+    const config = await loadUserConfig()
+    const dockerPath = config.dockerPath || 'docker'
     // Look for container with devcontainer.local_folder label
-    const result = await runCommand('docker', [
+    const result = await runCommand(dockerPath, [
       'ps',
       '--filter', `label=devcontainer.local_folder=${workspace}`,
       '--format', '{{.ID}}',
