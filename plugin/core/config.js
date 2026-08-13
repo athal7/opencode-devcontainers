@@ -10,6 +10,7 @@
 import { join, basename } from 'path'
 import { readFile, writeFile, mkdir } from 'fs/promises'
 import { existsSync } from 'fs'
+import childProcess from 'child_process'
 import { PATHS, pathId } from './paths.js'
 
 // Default configuration values
@@ -188,19 +189,58 @@ export async function generateOverrideConfig(workspace, port, repoName) {
   return overridePath
 }
 
+export async function checkCommand(command, platform = process.platform) {
+  return new Promise(resolve => {
+    const locator = platform === 'win32' ? 'where' : 'which'
+    const child = childProcess.spawn(locator, [command], { stdio: 'ignore' })
+    child.once('close', code => resolve(code === 0))
+    child.once('error', () => resolve(false))
+  })
+}
+
+function isPodmanPath(command) {
+  return /(^|[\\/])podman(?:\.exe)?$/i.test(command)
+}
+
+async function detectComposePath(dockerPath) {
+  if (await checkCommand('podman-compose')) return 'podman-compose'
+  if (await checkCommand('docker-compose')) return 'docker-compose'
+
+  throw new Error(
+    `Unsupported container runtime configuration: no compatible Compose command is available for Podman (${dockerPath}).`
+  )
+}
+
 /**
  * Load user configuration
  * 
  * @returns {Promise<object>} Merged user config with defaults
  */
 export async function loadUserConfig() {
+  let userConfig = {}
   try {
     const content = await readFile(PATHS.configFile, 'utf-8')
-    const userConfig = JSON.parse(content)
-    return { ...DEFAULT_CONFIG, ...userConfig }
+    userConfig = JSON.parse(content)
   } catch {
-    return { ...DEFAULT_CONFIG }
   }
+
+  const config = { ...DEFAULT_CONFIG, ...userConfig }
+
+  if (!config.dockerPath) {
+    if (await checkCommand('docker')) {
+      config.dockerPath = 'docker'
+    } else if (await checkCommand('podman')) {
+      config.dockerPath = 'podman'
+    } else {
+      config.dockerPath = 'docker'
+    }
+  }
+
+  if (!config.dockerComposePath && isPodmanPath(config.dockerPath)) {
+    config.dockerComposePath = await detectComposePath(config.dockerPath)
+  }
+
+  return config
 }
 
 export default {
@@ -209,4 +249,5 @@ export default {
   detectInternalPort,
   generateOverrideConfig,
   loadUserConfig,
+  checkCommand,
 }

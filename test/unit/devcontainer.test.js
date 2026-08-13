@@ -54,6 +54,18 @@ describe('buildUpArgs', () => {
     
     assert.ok(!args.includes('--remove-existing-container'))
   })
+
+  test('includes configured container runtime paths', () => {
+    const args = buildUpArgs('/workspace', '/override.json', {
+      dockerPath: '/usr/bin/podman',
+      dockerComposePath: '/usr/bin/podman-compose',
+    })
+
+    assert.deepStrictEqual(
+      args.slice(-4),
+      ['--docker-path', '/usr/bin/podman', '--docker-compose-path', '/usr/bin/podman-compose']
+    )
+  })
 })
 
 describe('buildExecArgs', () => {
@@ -92,6 +104,18 @@ describe('buildExecArgs', () => {
     assert.strictEqual(args[dashIndex + 1], 'sh')
     assert.strictEqual(args[dashIndex + 2], '-c')
     assert.strictEqual(args[dashIndex + 3], 'npm test')
+  })
+
+  test('includes configured container runtime paths', () => {
+    const args = buildExecArgs('/workspace', 'npm test', {
+      dockerPath: '/usr/bin/podman',
+      dockerComposePath: '/usr/bin/podman-compose',
+    })
+
+    assert.deepStrictEqual(
+      args.slice(3, 7),
+      ['--docker-path', '/usr/bin/podman', '--docker-compose-path', '/usr/bin/podman-compose']
+    )
   })
 })
 
