@@ -674,6 +674,21 @@ export async function list(options = {}) {
 }
 
 /**
+ * Validate a value used in docker label filter expressions.
+ * Reject control characters that can alter CLI parsing semantics.
+ *
+ * @param {string} value
+ * @returns {string}
+ */
+function sanitizeDockerFilterValue(value) {
+  const normalized = String(value)
+  if (/[\0\r\n]/.test(normalized)) {
+    throw new Error('Invalid workspace value for docker filter')
+  }
+  return normalized
+}
+
+/**
  * Check if a container is running for a workspace
  * 
  * This is a heuristic check - we look for a docker container
@@ -686,10 +701,11 @@ export async function isContainerRunning(workspace) {
   try {
     const config = await loadUserConfig()
     const dockerPath = config.dockerPath || 'docker'
+    const safeWorkspace = sanitizeDockerFilterValue(workspace)
     // Look for container with devcontainer.local_folder label
     const result = await runCommand(dockerPath, [
       'ps',
-      '--filter', `label=devcontainer.local_folder=${workspace}`,
+      '--filter', `label=devcontainer.local_folder=${safeWorkspace}`,
       '--format', '{{.ID}}',
     ])
     
