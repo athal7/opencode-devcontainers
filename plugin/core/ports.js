@@ -14,6 +14,7 @@ import { createServer } from 'net'
 import childProcess from 'child_process'
 import { PATHS } from './paths.js'
 import { loadUserConfig } from './config.js'
+import { sanitizeDockerFilterValue } from './docker-filter.js'
 
 /**
  * File-based locking using mkdir (atomic on all platforms)
@@ -244,13 +245,14 @@ async function runCommand(cmd, args) {
  */
 export async function getContainerPort(workspace) {
   try {
+    const safeWorkspace = sanitizeDockerFilterValue(workspace)
     const config = await loadUserConfig()
     const dockerPath = config.dockerPath || 'docker'
 
     // Find container with matching workspace label
     const result = await runCommand(dockerPath, [
       'ps',
-      '--filter', `label=devcontainer.local_folder=${workspace}`,
+      '--filter', `label=devcontainer.local_folder=${safeWorkspace}`,
       '--format', '{{.ID}}',
     ])
 

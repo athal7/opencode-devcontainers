@@ -18,6 +18,7 @@ import { generateOverrideConfig, getOverridePath, loadUserConfig } from './confi
 import { createClone, getClonePath, removeClone } from './clones.js'
 import { getCurrentBranch, getRepoRoot } from './git.js'
 import { startJob, updateJob, JOB_STATUS, removeJob } from './jobs.js'
+import { sanitizeDockerFilterValue } from './docker-filter.js'
 
 /**
  * Run a command and return a promise with the result
@@ -431,9 +432,10 @@ export async function exec(workspace, command, options = {}) {
  */
 async function findContainerId(workspace, dockerPath = 'docker') {
   try {
+    const safeWorkspace = sanitizeDockerFilterValue(workspace)
     const result = await runCommand(dockerPath, [
       'ps', '-a',
-      '--filter', `label=devcontainer.local_folder=${workspace}`,
+      '--filter', `label=devcontainer.local_folder=${safeWorkspace}`,
       '--format', '{{.ID}}',
     ])
     if (result.success && result.stdout) {
@@ -674,21 +676,6 @@ export async function list(options = {}) {
 }
 
 /**
- * Validate a value used in docker label filter expressions.
- * Reject control characters that can alter CLI parsing semantics.
- *
- * @param {string} value
- * @returns {string}
- */
-function sanitizeDockerFilterValue(value) {
-  const normalized = String(value)
-  if (/[\0\r\n]/.test(normalized)) {
-    throw new Error('Invalid workspace value for docker filter')
-  }
-  return normalized
-}
-
-/**
  * Check if a container is running for a workspace
  * 
  * This is a heuristic check - we look for a docker container
@@ -699,9 +686,9 @@ function sanitizeDockerFilterValue(value) {
  */
 export async function isContainerRunning(workspace) {
   try {
+    const safeWorkspace = sanitizeDockerFilterValue(workspace)
     const config = await loadUserConfig()
     const dockerPath = config.dockerPath || 'docker'
-    const safeWorkspace = sanitizeDockerFilterValue(workspace)
     // Look for container with devcontainer.local_folder label
     const result = await runCommand(dockerPath, [
       'ps',
