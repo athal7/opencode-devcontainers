@@ -209,6 +209,20 @@ describe('isContainerRunning', () => {
     const result = await isContainerRunning('/nonexistent/workspace')
     assert.strictEqual(typeof result, 'boolean')
   })
+
+  test('returns false instead of throwing for workspace containing a newline', async () => {
+    // Security regression test: a workspace value with an embedded newline
+    // could previously corrupt the Docker `--filter` argument (see code
+    // scanning alert #1 / GitHub issue #150). It must be rejected before
+    // reaching the Docker CLI, not passed through.
+    const result = await isContainerRunning('/workspace\n--filter label=foo=bar')
+    assert.strictEqual(result, false)
+  })
+
+  test('returns false instead of throwing for workspace containing a NUL byte', async () => {
+    const result = await isContainerRunning('/workspace\0injected')
+    assert.strictEqual(result, false)
+  })
 })
 
 // Integration-style tests (mock the devcontainer CLI)
@@ -670,5 +684,20 @@ describe('remove', () => {
     assert.strictEqual(second.jobRemoved, false, 'no job on second call')
     assert.strictEqual(second.cloneDeleted, false, 'no clone on second call')
     assert.strictEqual(second.errors.length, 0, 'no errors on repeat')
+  })
+
+  test('handles workspace containing a newline without throwing (findContainerId sink)', async () => {
+    // Security regression test: remove() calls the internal findContainerId(),
+    // which also embeds workspace in a Docker `--filter` argument. A
+    // control character must be rejected before reaching the Docker CLI.
+    mkdirSync(testDir, { recursive: true })
+    writeFileSync(join(testDir, 'ports.json'), '{}')
+    writeFileSync(join(testDir, 'jobs.json'), '{}')
+
+    const maliciousWorkspace = '/workspace\n--filter label=foo=bar'
+    const summary = await remove(maliciousWorkspace, 'test', 'malicious')
+
+    assert.strictEqual(summary.containerFound, false)
+    assert.strictEqual(summary.errors.length, 0)
   })
 })

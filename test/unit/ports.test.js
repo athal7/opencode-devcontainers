@@ -311,6 +311,36 @@ describe('getContainerPort', () => {
     // Should not throw, just return null
     assert.strictEqual(port, null)
   })
+
+  test('returns null and never invokes docker for a workspace with a newline', async (t) => {
+    // Security regression test: a workspace value with an embedded newline
+    // could previously corrupt the Docker `--filter` argument (code
+    // scanning alert #1 / issue #150). It must be rejected before spawning
+    // docker, not passed through.
+    let spawned = false
+    t.mock.method(childProcess, 'spawn', () => {
+      spawned = true
+      throw new Error('spawn should not be called for an invalid workspace')
+    })
+
+    const port = await getContainerPort('/workspace\n--filter label=foo=bar')
+
+    assert.strictEqual(port, null)
+    assert.strictEqual(spawned, false)
+  })
+
+  test('returns null and never invokes docker for a workspace with a NUL byte', async (t) => {
+    let spawned = false
+    t.mock.method(childProcess, 'spawn', () => {
+      spawned = true
+      throw new Error('spawn should not be called for an invalid workspace')
+    })
+
+    const port = await getContainerPort('/workspace\0injected')
+
+    assert.strictEqual(port, null)
+    assert.strictEqual(spawned, false)
+  })
 })
 
 describe('getContainerPort with a configured runtime', () => {

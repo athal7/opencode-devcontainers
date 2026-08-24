@@ -18,6 +18,7 @@ import { generateOverrideConfig, getOverridePath, loadUserConfig } from './confi
 import { createClone, getClonePath, removeClone } from './clones.js'
 import { getCurrentBranch, getRepoRoot } from './git.js'
 import { startJob, updateJob, JOB_STATUS, removeJob } from './jobs.js'
+import { sanitizeDockerFilterValue } from './docker-filter.js'
 
 /**
  * Run a command and return a promise with the result
@@ -431,9 +432,10 @@ export async function exec(workspace, command, options = {}) {
  */
 async function findContainerId(workspace, dockerPath = 'docker') {
   try {
+    const safeWorkspace = sanitizeDockerFilterValue(workspace)
     const result = await runCommand(dockerPath, [
       'ps', '-a',
-      '--filter', `label=devcontainer.local_folder=${workspace}`,
+      '--filter', `label=devcontainer.local_folder=${safeWorkspace}`,
       '--format', '{{.ID}}',
     ])
     if (result.success && result.stdout) {
@@ -684,12 +686,13 @@ export async function list(options = {}) {
  */
 export async function isContainerRunning(workspace) {
   try {
+    const safeWorkspace = sanitizeDockerFilterValue(workspace)
     const config = await loadUserConfig()
     const dockerPath = config.dockerPath || 'docker'
     // Look for container with devcontainer.local_folder label
     const result = await runCommand(dockerPath, [
       'ps',
-      '--filter', `label=devcontainer.local_folder=${workspace}`,
+      '--filter', `label=devcontainer.local_folder=${safeWorkspace}`,
       '--format', '{{.ID}}',
     ])
     
